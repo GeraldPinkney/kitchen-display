@@ -1,0 +1,39 @@
+# Kitchen display dashboard (Ha) — draft skeleton.
+# Add to HA as a new dashboard named "Kitchen" (URL /lovelace-kitchen).
+title: Kitchen
+kiosk_mode:
+  hide_header: true
+  hide_sidebar: true
+views:
+  - title: Energy
+    path: energy
+    cards:
+      - type: energy-distribution
+        link_dashboard: true
+      - type: gauge
+        entity: sensor.battery_soc
+        name: Battery
+      - type: entities
+        title: Optimizer
+        entities:
+          - sensor.optimizer_planned_action
+          - sensor.optimizer_grid_forecast
+          - sensor.solar_panel_power
+  - title: Home
+    path: home
+    cards:
+      - type: weather-forecast
+        entity: weather.home
+      - type: custom:calendar-card
+        title: Next event
+      - type: light
+        entity: light.kitchen
+        name: Kitchen light
+  - title: Alerts
+    path: alerts
+    cards:
+      - type: markdown
+        title: Status
+        content: >-
+          {{ states('sensor.watchdog_status') }} · backups:
+          {{ states('sensor.last_backup') }}

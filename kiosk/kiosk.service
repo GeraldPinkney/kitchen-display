@@ -1,0 +1,15 @@
+[Unit]
+Description=Kitchen display kiosk (Chromium)
+After=graphical.target network-online.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=kiosk
+Environment=KIOSK_URL_FILE=/opt/kitchen-display/kiosk/current_url.txt
+ExecStart=/opt/kitchen-display/kiosk/launch_kiosk.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=graphical.target
