@@ -1,58 +1,37 @@
 # kitchen-display
 
-Wall-mounted kitchen touch display for the Pinkney homelab, showing Home Assistant
-dashboards and LuxPower optimizer performance.
+Countertop kitchen touch display for the Pinkney homelab, running a Home Assistant Lovelace kiosk on a Raspberry Pi 5.
 
-## Hardware (planned BOM)
+## Hardware (BOM)
 
-| Item | Choice | Notes |
+| Component | Model / Spec | Notes |
 | --- | --- | --- |
-| Compute | Raspberry Pi 4 4GB | Chromium kiosk is comfortable; ~3–8 W |
-| Display | 10.1" IPS capacitive touch monitor (USB-powered, e.g. Waveshare 10.1") | IPS for kitchen viewing angles; monitor powers the Pi |
-| Power | One USB-C/USB-A 12V+ adapter per monitor spec | Add smart-plug energy monitoring for measured consumption |
-| Mount | VESA / under-cabinet bracket | Ventilation — do not seal the Pi behind glass |
-| Network | Wi-Fi (or Ethernet over USB) | LAN-only, no cloud |
+| Compute | Raspberry Pi 5 | Runs Raspberry Pi OS Trixie 64-bit desktop |
+| Display | Waveshare 10.1" IPS capacitive touch (1920x1200) | HDMI video + USB touch |
+| Power | Official Raspberry Pi 27W USB-C PSU | Dedicated Pi 5 power supply |
+| Stand | Waveshare included desktop stand | Countertop placement (no wall mount) |
+| Network | LAN-only (Ethernet / local Wi-Fi) | Connects directly to Home Assistant at `http://192.168.178.84` |
 
-## Use cases
+## Software Stack & Architecture
 
-1. Solar & optimizer performance: PV actuals vs forecast, battery SoC, optimizer
-   planned actions (from `luxpower-optimizer` HA sensors).
-2. Home at-a-glance: energy flow, weather, calendar, bin day.
-3. Quick controls: kitchen lights/switches, timer shortcuts.
-4. Alert surface: red banner on backup/CrowdSec/optimizer watchdog alerts
-   (silent-on-success elsewhere, visible here).
+- **OS & Compositor**: Raspberry Pi OS **Trixie 64-bit** with **Wayland / `labwc`** desktop autologin. No X11 utilities (`xset`, `xdotool`, `unclutter`).
+- **Browser Kiosk**: `chromium` (native Wayland via `--ozone-platform=wayland --kiosk`) launched by `kiosk/launch_kiosk.sh`.
+- **Service Supervision**: `kiosk/kitchen-display.service` runs as a **systemd user unit** (`Restart=always`, `RestartSec=5`) bound to `graphical-session.target` and started from `~/.config/labwc/autostart`.
+- **Screen Blanking**: `swayidle` + `wlopm` turns `HDMI-A-1` off after inactivity and wakes on touch input.
+- **Nightly Maintenance**: A systemd timer (`kitchen-display-reboot.timer`) reboots the Pi daily at `03:00`.
+- **Configuration & Secrets**:
+  - `~/.config/kitchen-display/env` (`chmod 600`) stores private environment variables and secrets (never committed to git).
+  - `~/.config/kitchen-display/url` overrides the target URL (defaults to `http://192.168.178.84/kitchen/home?kiosk`).
+- **Home Assistant Dashboard**: Storage-mode Lovelace dashboard at `url_path: kitchen` (`ha/kitchen_dashboard.yaml`), using only built-in Home Assistant cards (no HACS dependencies) with `home` and `energy` views.
 
-## Requirements
+## Repository Layout
 
-- Kiosk auto-recovery: systemd restarts the browser, nightly 03:00 reboot,
-  watchdog failure alerts to HA.
-- Dark schedule: screen off ~23:00–06:30 (and idle timeout), wake on touch.
-- LAN-only; all data from HA (http://192.168.178.84:80) and Nextcloud-hosted
-  optimizer page.
-- No cloud dependencies; long-lived HA auth token in an env file.
-
-## Software approach
-
-Chromium in kiosk mode via systemd, with a display toggle between:
-
-- `ha.html` target: HA Lovelace "Kitchen" dashboard (`config/lovelace_kitchen.yaml`)
-- `perf.html` target: optimizer performance page (variant of
-  `generate_solar_charts.py` output)
-
-Toggle via kiosk URL param and an HA entity (`input_select.kitchen_display`),
-switched from the dashboard itself or via HA service call from the browser side.
-
-## Layout
-
-- `kiosk/` — systemd units, launcher script, README for flashing/setup
-- `ha/` — Lovelace YAML, automations (night off, wake, reboot)
-- `perf-page/` — optimizer chart page source, if it diverges from the
-  Nextcloud-hosted `luxpower_dashboard.html`
-- `docs/` — BOM, install walkthrough, photos
-
-## Conventions
-
-- Same discipline as `luxpower-optimizer`: backup before edit, test after,
-  silent-on-success/alert-on-failure for any cron/automation scripts.
-- Credentials live in env files (e.g. `.kiosk.env` for the HA token), never
-  committed.
+- `ha/kitchen_dashboard.yaml` — Canonical Lovelace dashboard configuration (`Kitchen` with `home` and `energy` views).
+- `tools/dashboard_check.py` — Validates dashboard structure, built-in card types, and entity IDs against `tests/fixtures/ha_states.json` or live Home Assistant (`--live`).
+- `tools/push_dashboard.py` — Creates/updates the `kitchen` storage dashboard over the Home Assistant WebSocket API (`--apply`).
+- `kiosk/launch_kiosk.sh` — Resolves the target URL (`$KIOSK_URL_FILE` -> `$KIOSK_URL` -> default) and `exec`s `chromium` under Wayland.
+- `kiosk/kitchen-display.service` — systemd user service unit for the kiosk browser.
+- `kiosk/autostart` — `labwc` autostart script starting `kitchen-display.service` and `swayidle`/`wlopm`.
+- `provision/install.sh` — Idempotent Raspberry Pi provisioning script (`--dry-run` supported).
+- `docs/install.md` — Flash, boot, provision, and verification runbook.
+- `tests/` — Pytest test suite and captured Home Assistant entity fixture.

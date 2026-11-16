@@ -1,0 +1,14 @@
+[Unit]
+Description=Kitchen Display Chromium Kiosk (Wayland)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/kitchen-display/env
+ExecStart=%h/.config/kitchen-display/launch_kiosk.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

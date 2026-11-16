@@ -55,5 +55,7 @@ def test_labwc_autostart_starts_the_user_unit(repo_root):
     if not path.is_file():
         pytest.fail("missing kiosk/autostart")
     body = path.read_text()
-    assert "systemctl --user start kitchen-display.service" in body
-    assert "&" in body or "start" in body
+    start_lines = [l for l in body.splitlines() if "systemctl --user start kitchen-display.service" in l]
+    assert start_lines, "autostart does not start the user unit"
+    # labwc's autostart must not block: every entry has to be backgrounded.
+    assert all(l.rstrip().endswith("&") for l in start_lines), start_lines

@@ -1,0 +1,95 @@
+title: Kitchen
+views:
+  - title: Home
+    path: home
+    cards:
+      - type: vertical-stack
+        cards:
+          - type: weather-forecast
+            entity: weather.forecast_home
+            name: Weather
+          - type: horizontal-stack
+            cards:
+              - type: light
+                entity: light.bedroom_light
+                name: Bedroom Light
+              - type: light
+                entity: light.standing_lamp
+                name: Standing Lamp
+      - type: vertical-stack
+        cards:
+          - type: gauge
+            entity: sensor.luxpower_battery_soc
+            name: Battery SoC
+            min: 0
+            max: 100
+          - type: glance
+            title: Power Now
+            entities:
+              - entity: sensor.luxpower_solar_power
+                name: Solar
+              - entity: sensor.luxpower_home_consumption
+                name: Home Load
+              - entity: sensor.luxpower_grid_import
+                name: Grid Import
+              - entity: sensor.luxpower_grid_export
+                name: Grid Export
+      - type: entities
+        title: Household & Status
+        entities:
+          - entity: todo.shopping_list
+            name: Shopping List
+          - entity: sensor.luxpower_inverter_status
+            name: Inverter Status
+          - entity: sensor.backup_last_successful_automatic_backup
+            name: Last Successful Backup
+
+  - title: Energy
+    path: energy
+    cards:
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.luxpower_battery_soc
+            name: Battery SoC
+            min: 0
+            max: 100
+          - type: entities
+            title: LuxPower Inverter
+            entities:
+              - entity: sensor.luxpower_inverter_status
+                name: Inverter Status
+              - entity: sensor.luxpower_battery_voltage
+                name: Battery Voltage
+              - entity: sensor.luxpower_solar_power
+                name: Solar Generation
+              - entity: sensor.luxpower_home_consumption
+                name: Home Consumption
+              - entity: sensor.luxpower_grid_import
+                name: Grid Import
+              - entity: sensor.luxpower_grid_export
+                name: Grid Export
+      - type: entities
+        title: PV Forecast vs Production
+        entities:
+          - entity: sensor.power_production_now
+            name: Estimated Power Now
+          - entity: sensor.energy_current_hour
+            name: Forecast This Hour
+          - entity: sensor.energy_next_hour
+            name: Forecast Next Hour
+          - entity: sensor.energy_production_today
+            name: Forecast Today Total
+          - entity: sensor.energy_production_today_remaining
+            name: Forecast Today Remaining
+          - entity: sensor.energy_production_tomorrow
+            name: Forecast Tomorrow
+          - entity: sensor.power_highest_peak_time_today
+            name: Peak Time Today
+      - type: history-graph
+        title: Power History
+        entities:
+          - sensor.luxpower_solar_power
+          - sensor.luxpower_home_consumption
+          - sensor.luxpower_grid_import
+          - sensor.power_production_now

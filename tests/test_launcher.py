@@ -13,7 +13,7 @@ SCRIPT = "kiosk/launch_kiosk.sh"
 DEFAULT_URL = "http://192.168.178.84/kitchen/home?kiosk"
 
 
-def run_launcher(repo_root, tmp_path, extra_env=None, url_file=None):
+def run_launcher(repo_root, tmp_path, extra_env=None, url_file=None, default_url_file=False):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     argfile = tmp_path / "chromium.args"
@@ -28,8 +28,9 @@ def run_launcher(repo_root, tmp_path, extra_env=None, url_file=None):
     env = {
         "PATH": f"{bin_dir}:/usr/bin:/bin",
         "HOME": str(tmp_path),
-        "KIOSK_URL_FILE": str(url_file if url_file is not None else tmp_path / "absent-url"),
     }
+    if not default_url_file:
+        env["KIOSK_URL_FILE"] = str(url_file if url_file is not None else tmp_path / "absent-url")
     env.update(extra_env or {})
     proc = subprocess.run(
         ["/bin/bash", str(script)], env=env, cwd=str(tmp_path),
@@ -66,6 +67,16 @@ def test_empty_url_file_falls_back_to_default(repo_root, tmp_path):
     url_file.write_text("   \n")
     args = run_launcher(repo_root, tmp_path, url_file=url_file)
     assert args[-1] == DEFAULT_URL
+
+
+def test_default_url_file_is_read_from_the_config_dir(repo_root, tmp_path):
+    # With no KIOSK_URL_FILE override the launcher must read
+    # $HOME/.config/kitchen-display/url, which is what install.sh writes.
+    config_dir = tmp_path / ".config" / "kitchen-display"
+    config_dir.mkdir(parents=True)
+    (config_dir / "url").write_text("http://example.test/installed\n")
+    args = run_launcher(repo_root, tmp_path, default_url_file=True)
+    assert args[-1] == "http://example.test/installed"
 
 
 def test_launcher_suppresses_browser_chrome(repo_root, tmp_path):
