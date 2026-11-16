@@ -41,6 +41,10 @@ def test_reads_url_and_settings_from_a_private_env_file(repo_root):
 
 def test_starts_with_the_wayland_session(repo_root):
     d = directives(repo_root)
+    # graphical-session.target cannot be started on this image (RefuseManualStart),
+    # so the unit is asked for by name from labwc's autostart, which only runs once
+    # the compositor is up.
+    assert d.get("PartOf") == ["graphical-session.target"]
     assert d.get("WantedBy") == ["graphical-session.target"]
 
 
@@ -50,15 +54,47 @@ def test_command_is_exec_not_shell_wrapped(repo_root):
     assert not any("sh -c" in v for v in d.get("ExecStart", []))
 
 
-def test_labwc_autostart_starts_the_user_unit(repo_root):
+def test_session_target_is_not_used_as_a_trigger(repo_root):
+    """graphical-session.target is RefuseManualStart=yes and never activates here.
+
+    Attempting the dependency-target pattern (own target BindsTo graphical-session.target)
+    left the kiosk stopped on this image, so the contract is: no target file, start by name.
+    """
+    assert not (repo_root / "kiosk" / "kitchen-session.target").exists()
+
+
+def test_labwc_autostart_starts_both_units_by_name(repo_root):
+    """Autostart cannot use a session target here, so it asks systemd for the units."""
     path = repo_root / "kiosk" / "autostart"
     if not path.is_file():
         pytest.fail("missing kiosk/autostart")
     body = path.read_text()
-    start_lines = [l for l in body.splitlines() if "systemctl --user start kitchen-display.service" in l]
-    assert start_lines, "autostart does not start the user unit"
-    # labwc's autostart must not block: every entry has to be backgrounded.
+    start_lines = [l for l in body.splitlines() if "systemctl --user start" in l]
+    assert any("kitchen-display.service" in l for l in start_lines), body
+    assert any("kitchen-display-http.service" in l for l in start_lines), body
+    # labwc's autostart must not block: every unit start has to be backgrounded.
     assert all(l.rstrip().endswith("&") for l in start_lines), start_lines
+    # No session-target indirection: graphical-session.target is RefuseManualStart.
+    assert not any("session.target) " in l or "start graphical-session.target" in l for l in start_lines), start_lines
+
+
+def test_labwc_autostart_publishes_wayland_env_before_starting_the_target(repo_root):
+    body = (repo_root / "kiosk" / "autostart").read_text()
+    lines = [l.strip() for l in body.splitlines() if l.strip() and not l.strip().startswith("#")]
+    imports = [i for i, l in enumerate(lines) if "import-environment" in l]
+    assert imports, "autostart does not import the compositor environment"
+    assert "WAYLAND_DISPLAY" in lines[imports[0]], lines[imports[0]]
+    starts = [i for i, l in enumerate(lines) if "kitchen-display.service" in l]
+    assert starts and imports[0] < starts[0], "env must be published before the kiosk starts"
+
+
+def test_labwc_autostart_has_no_sleep_race(repo_root):
+    body = (repo_root / "kiosk" / "autostart").read_text()
+    offenders = [
+        l.strip() for l in body.splitlines()
+        if l.strip() and not l.strip().startswith("#") and "sleep" in l
+    ]
+    assert not offenders, f"autostart still sleeps instead of relying on systemd order: {offenders}"
 
 
 def test_labwc_autostart_keeps_kanshi_and_never_blocks(repo_root):
@@ -69,8 +105,11 @@ def test_labwc_autostart_keeps_kanshi_and_never_blocks(repo_root):
         if l.strip() and not l.strip().startswith("#")
     ]
     assert any("kanshi" in l for l in active_lines), active_lines
-    assert any("kitchen-display-http.service" in l for l in active_lines), active_lines
-    assert all(l.endswith("&") for l in active_lines), active_lines
+    assert any("swayidle" in l for l in active_lines), active_lines
+    # Anything that can wait on another process (unit start, daemon) is backgrounded;
+    # import-environment is a fast local call and stays synchronous by design.
+    waiting = [l for l in active_lines if "systemctl --user start" in l or "kanshi)" in l or l.startswith("swayidle")]
+    assert all(l.endswith("&") for l in waiting), waiting
 
 
 def http_unit_directives(repo_root):

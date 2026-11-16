@@ -1,5 +1,15 @@
 # labwc autostart entry for kitchen-display
+#
+# labwc runs this file only once the compositor is up, so every start line here is
+# correctly ordered by construction -- the old `sleep 1` / `sleep 2` chain was
+# cargo-culted and is gone. The kiosk and the static HTTP server are systemd user
+# units, so systemd supervises and restarts them; autostart only asks for them.
+#
+# graphical-session.target cannot be used as the trigger: it is
+# RefuseManualStart=yes and does not activate on this image, so the units are
+# started by name instead of through a session target.
+systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE
+(systemctl --user start kitchen-display-http.service) &
+(systemctl --user start kitchen-display.service) &
 (pgrep -x kanshi >/dev/null || kanshi) &
-(sleep 1 && systemctl --user start kitchen-display-http.service) &
-(sleep 2 && systemctl --user start kitchen-display.service) &
 swayidle -w timeout 600 'wlopm --off HDMI-A-1' resume 'wlopm --on HDMI-A-1' &
