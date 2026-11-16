@@ -1,0 +1,75 @@
+"""Specs for kiosk/launch_kiosk.sh — URL resolution and Wayland flags.
+
+The script is exercised for real: a shim named `chromium` earlier on PATH
+records its argv, so the assertions are about what actually gets executed.
+"""
+import os
+import pathlib
+import subprocess
+
+import pytest
+
+SCRIPT = "kiosk/launch_kiosk.sh"
+DEFAULT_URL = "http://192.168.178.84/kitchen/home?kiosk"
+
+
+def run_launcher(repo_root, tmp_path, extra_env=None, url_file=None):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    argfile = tmp_path / "chromium.args"
+    shim = bin_dir / "chromium"
+    shim.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "{argfile}"\n')
+    shim.chmod(0o755)
+
+    script = repo_root / SCRIPT
+    if not script.is_file():
+        pytest.fail(f"missing {SCRIPT}")
+
+    env = {
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "KIOSK_URL_FILE": str(url_file if url_file is not None else tmp_path / "absent-url"),
+    }
+    env.update(extra_env or {})
+    proc = subprocess.run(
+        ["/bin/bash", str(script)], env=env, cwd=str(tmp_path),
+        capture_output=True, text=True, timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return argfile.read_text().splitlines()
+
+
+def test_default_url_is_the_ha_kitchen_dashboard(repo_root, tmp_path):
+    args = run_launcher(repo_root, tmp_path)
+    assert args[-1] == DEFAULT_URL
+    assert "--kiosk" in args
+    assert "--ozone-platform=wayland" in args
+
+
+def test_kiosk_url_env_overrides_default(repo_root, tmp_path):
+    args = run_launcher(repo_root, tmp_path, extra_env={"KIOSK_URL": "http://example.test/page"})
+    assert args[-1] == "http://example.test/page"
+
+
+def test_url_file_wins_over_env(repo_root, tmp_path):
+    url_file = tmp_path / "url"
+    url_file.write_text("http://example.test/from-file\n")
+    args = run_launcher(
+        repo_root, tmp_path,
+        extra_env={"KIOSK_URL": "http://example.test/from-env"}, url_file=url_file,
+    )
+    assert args[-1] == "http://example.test/from-file"
+
+
+def test_empty_url_file_falls_back_to_default(repo_root, tmp_path):
+    url_file = tmp_path / "url"
+    url_file.write_text("   \n")
+    args = run_launcher(repo_root, tmp_path, url_file=url_file)
+    assert args[-1] == DEFAULT_URL
+
+
+def test_launcher_suppresses_browser_chrome(repo_root, tmp_path):
+    args = run_launcher(repo_root, tmp_path)
+    for flag in ("--noerrdialogs", "--disable-infobars", "--no-first-run",
+                 "--disable-session-crashed-bubble"):
+        assert flag in args, flag

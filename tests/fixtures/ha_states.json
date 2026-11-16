@@ -1,0 +1,488 @@
+{
+ "binary_sensor.bedroom_light_cloud_connection": {
+  "device_class": "connectivity",
+  "friendly_name": "Bedroom Light Cloud connection",
+  "state": "on",
+  "unit_of_measurement": null
+ },
+ "binary_sensor.gerald_pinkney_s_galaxy_s8_presence": {
+  "device_class": "presence",
+  "friendly_name": "Gerald Pinkney's Galaxy S8+ Presence",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "binary_sensor.raspberry_pi_power_status": {
+  "device_class": "problem",
+  "friendly_name": "Raspberry Pi Power status",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "binary_sensor.standing_lamp_cloud_connection": {
+  "device_class": "connectivity",
+  "friendly_name": "standing lamp Cloud connection",
+  "state": "unavailable",
+  "unit_of_measurement": null
+ },
+ "conversation.home_assistant": {
+  "device_class": null,
+  "friendly_name": "Home Assistant",
+  "state": "2026-09-21T15:41:56.402017+00:00",
+  "unit_of_measurement": null
+ },
+ "device_tracker.ipad_7": {
+  "device_class": null,
+  "friendly_name": "iPad (7)",
+  "state": "home",
+  "unit_of_measurement": null
+ },
+ "device_tracker.iphone_13_pro": {
+  "device_class": null,
+  "friendly_name": "IPhone 13 Pro",
+  "state": "home",
+  "unit_of_measurement": null
+ },
+ "event.backup_automatic_backup": {
+  "device_class": null,
+  "friendly_name": "Backup Automatic backup",
+  "state": "2026-11-01T10:39:34.956+00:00",
+  "unit_of_measurement": null
+ },
+ "light.bedroom_light": {
+  "device_class": null,
+  "friendly_name": "Bedroom Light",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "light.standing_lamp": {
+  "device_class": null,
+  "friendly_name": "standing lamp",
+  "state": "unavailable",
+  "unit_of_measurement": null
+ },
+ "media_player.bedroom_speaker": {
+  "device_class": "speaker",
+  "friendly_name": "Bedroom speaker",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "media_player.dining_room_speaker": {
+  "device_class": "speaker",
+  "friendly_name": "dining room speaker",
+  "state": "unavailable",
+  "unit_of_measurement": null
+ },
+ "media_player.garage_tv": {
+  "device_class": null,
+  "friendly_name": "Garage TV",
+  "state": "unavailable",
+  "unit_of_measurement": null
+ },
+ "media_player.kitchen_display": {
+  "device_class": null,
+  "friendly_name": "Kitchen display",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "media_player.living_room_speaker": {
+  "device_class": "speaker",
+  "friendly_name": "Living Room speaker",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "media_player.living_room_tv": {
+  "device_class": null,
+  "friendly_name": "living room tv",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "media_player.office_speaker": {
+  "device_class": "speaker",
+  "friendly_name": "Office speaker",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "media_player.ruths_speaker": {
+  "device_class": "speaker",
+  "friendly_name": "Ruths speaker",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "notify.ipad_7": {
+  "device_class": null,
+  "friendly_name": "iPad (7)",
+  "state": "unknown",
+  "unit_of_measurement": null
+ },
+ "notify.iphone_13_pro": {
+  "device_class": null,
+  "friendly_name": "IPhone 13 Pro",
+  "state": "unknown",
+  "unit_of_measurement": null
+ },
+ "person.gerald": {
+  "device_class": null,
+  "friendly_name": "Gerald",
+  "state": "home",
+  "unit_of_measurement": null
+ },
+ "select.bedroom_light_light_preset": {
+  "device_class": null,
+  "friendly_name": "Bedroom Light Light preset",
+  "state": "Not set",
+  "unit_of_measurement": null
+ },
+ "select.standing_lamp_light_preset": {
+  "device_class": null,
+  "friendly_name": "standing lamp Light preset",
+  "state": "unavailable",
+  "unit_of_measurement": null
+ },
+ "sensor.backup_backup_manager_state": {
+  "device_class": "enum",
+  "friendly_name": "Backup Backup Manager state",
+  "state": "idle",
+  "unit_of_measurement": null
+ },
+ "sensor.backup_last_attempted_automatic_backup": {
+  "device_class": "timestamp",
+  "friendly_name": "Backup Last attempted automatic backup",
+  "state": "unknown",
+  "unit_of_measurement": null
+ },
+ "sensor.backup_last_successful_automatic_backup": {
+  "device_class": "timestamp",
+  "friendly_name": "Backup Last successful automatic backup",
+  "state": "unknown",
+  "unit_of_measurement": null
+ },
+ "sensor.backup_next_scheduled_automatic_backup": {
+  "device_class": "timestamp",
+  "friendly_name": "Backup Next scheduled automatic backup",
+  "state": "unknown",
+  "unit_of_measurement": null
+ },
+ "sensor.bedroom_light_current_consumption": {
+  "device_class": "power",
+  "friendly_name": "Bedroom Light Current consumption",
+  "state": "0.0",
+  "unit_of_measurement": "W"
+ },
+ "sensor.bedroom_light_this_month_s_consumption": {
+  "device_class": "energy",
+  "friendly_name": "Bedroom Light This month's consumption",
+  "state": "0.168",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.bedroom_light_today_s_consumption": {
+  "device_class": "energy",
+  "friendly_name": "Bedroom Light Today's consumption",
+  "state": "0.0",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_current_hour": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - this hour",
+  "state": "0.0",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_current_hour_2": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - this hour",
+  "state": "0.0",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_current_hour_3": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - this hour",
+  "state": "0.0",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_next_hour": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - next hour",
+  "state": "0.0",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_next_hour_2": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - next hour",
+  "state": "0.0",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_next_hour_3": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - next hour",
+  "state": "0.0",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_production_today": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - today",
+  "state": "6.275",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_production_today_2": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - today",
+  "state": "1.918",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_production_today_3": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - today",
+  "state": "1.656",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_production_today_remaining": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - remaining today",
+  "state": "6.275",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_production_today_remaining_2": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - remaining today",
+  "state": "1.918",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_production_today_remaining_3": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - remaining today",
+  "state": "1.656",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_production_tomorrow": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - tomorrow",
+  "state": "3.284",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_production_tomorrow_2": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - tomorrow",
+  "state": "1.182",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.energy_production_tomorrow_3": {
+  "device_class": "energy",
+  "friendly_name": "Solar production forecast Estimated energy production - tomorrow",
+  "state": "1.237",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.luxpower_battery_soc": {
+  "device_class": "battery",
+  "friendly_name": "LuxPower Battery SOC",
+  "state": "21",
+  "unit_of_measurement": "%"
+ },
+ "sensor.luxpower_battery_voltage": {
+  "device_class": "voltage",
+  "friendly_name": "LuxPower Battery Voltage",
+  "state": "54.5",
+  "unit_of_measurement": "V"
+ },
+ "sensor.luxpower_grid_export": {
+  "device_class": "power",
+  "friendly_name": "LuxPower Grid Export Power",
+  "state": "0",
+  "unit_of_measurement": "W"
+ },
+ "sensor.luxpower_grid_import": {
+  "device_class": "power",
+  "friendly_name": "LuxPower Grid Import Power",
+  "state": "328",
+  "unit_of_measurement": "W"
+ },
+ "sensor.luxpower_home_consumption": {
+  "device_class": "power",
+  "friendly_name": "LuxPower Home Load Consumption",
+  "state": "328",
+  "unit_of_measurement": "W"
+ },
+ "sensor.luxpower_inverter_status": {
+  "device_class": null,
+  "friendly_name": "LuxPower Inverter Status",
+  "state": "warning",
+  "unit_of_measurement": null
+ },
+ "sensor.luxpower_solar_power": {
+  "device_class": "power",
+  "friendly_name": "LuxPower Solar Generation",
+  "state": "0",
+  "unit_of_measurement": "W"
+ },
+ "sensor.power_highest_peak_time_today": {
+  "device_class": "timestamp",
+  "friendly_name": "Solar production forecast Highest power peak time - today",
+  "state": "2026-11-16T11:00:00+00:00",
+  "unit_of_measurement": null
+ },
+ "sensor.power_highest_peak_time_today_2": {
+  "device_class": "timestamp",
+  "friendly_name": "Solar production forecast Highest power peak time - today",
+  "state": "2026-11-16T11:00:00+00:00",
+  "unit_of_measurement": null
+ },
+ "sensor.power_highest_peak_time_today_3": {
+  "device_class": "timestamp",
+  "friendly_name": "Solar production forecast Highest power peak time - today",
+  "state": "2026-11-16T13:00:00+00:00",
+  "unit_of_measurement": null
+ },
+ "sensor.power_highest_peak_time_tomorrow": {
+  "device_class": "timestamp",
+  "friendly_name": "Solar production forecast Highest power peak time - tomorrow",
+  "state": "2026-11-17T12:00:00+00:00",
+  "unit_of_measurement": null
+ },
+ "sensor.power_highest_peak_time_tomorrow_2": {
+  "device_class": "timestamp",
+  "friendly_name": "Solar production forecast Highest power peak time - tomorrow",
+  "state": "2026-11-17T12:00:00+00:00",
+  "unit_of_measurement": null
+ },
+ "sensor.power_highest_peak_time_tomorrow_3": {
+  "device_class": "timestamp",
+  "friendly_name": "Solar production forecast Highest power peak time - tomorrow",
+  "state": "2026-11-17T14:00:00+00:00",
+  "unit_of_measurement": null
+ },
+ "sensor.power_production_now": {
+  "device_class": "power",
+  "friendly_name": "Solar production forecast Estimated power production - now",
+  "state": "0",
+  "unit_of_measurement": "W"
+ },
+ "sensor.power_production_now_2": {
+  "device_class": "power",
+  "friendly_name": "Solar production forecast Estimated power production - now",
+  "state": "0",
+  "unit_of_measurement": "W"
+ },
+ "sensor.power_production_now_3": {
+  "device_class": "power",
+  "friendly_name": "Solar production forecast Estimated power production - now",
+  "state": "0",
+  "unit_of_measurement": "W"
+ },
+ "sensor.standing_lamp_current_consumption": {
+  "device_class": "power",
+  "friendly_name": "standing lamp Current consumption",
+  "state": "unavailable",
+  "unit_of_measurement": "W"
+ },
+ "sensor.standing_lamp_this_month_s_consumption": {
+  "device_class": "energy",
+  "friendly_name": "standing lamp This month's consumption",
+  "state": "unavailable",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.standing_lamp_today_s_consumption": {
+  "device_class": "energy",
+  "friendly_name": "standing lamp Today's consumption",
+  "state": "unavailable",
+  "unit_of_measurement": "kWh"
+ },
+ "sensor.sun_next_dawn": {
+  "device_class": "timestamp",
+  "friendly_name": "Sun Next dawn",
+  "state": "2026-11-16T06:45:43+00:00",
+  "unit_of_measurement": null
+ },
+ "sensor.sun_next_dusk": {
+  "device_class": "timestamp",
+  "friendly_name": "Sun Next dusk",
+  "state": "2026-11-16T16:50:46+00:00",
+  "unit_of_measurement": null
+ },
+ "sensor.sun_next_midnight": {
+  "device_class": "timestamp",
+  "friendly_name": "Sun Next midnight",
+  "state": "2026-11-16T23:48:45+00:00",
+  "unit_of_measurement": null
+ },
+ "sensor.sun_next_noon": {
+  "device_class": "timestamp",
+  "friendly_name": "Sun Next noon",
+  "state": "2026-11-16T11:48:27+00:00",
+  "unit_of_measurement": null
+ },
+ "sensor.sun_next_rising": {
+  "device_class": "timestamp",
+  "friendly_name": "Sun Next rising",
+  "state": "2026-11-16T07:23:29+00:00",
+  "unit_of_measurement": null
+ },
+ "sensor.sun_next_setting": {
+  "device_class": "timestamp",
+  "friendly_name": "Sun Next setting",
+  "state": "2026-11-16T16:13:03+00:00",
+  "unit_of_measurement": null
+ },
+ "sun.sun": {
+  "device_class": null,
+  "friendly_name": "Sun",
+  "state": "below_horizon",
+  "unit_of_measurement": null
+ },
+ "todo.shopping_list": {
+  "device_class": null,
+  "friendly_name": "Shopping list",
+  "state": "0",
+  "unit_of_measurement": null
+ },
+ "tts.google_translate_en_com": {
+  "device_class": null,
+  "friendly_name": "Google Translate en com",
+  "state": "unknown",
+  "unit_of_measurement": null
+ },
+ "update.advanced_ssh_web_terminal_update": {
+  "device_class": null,
+  "friendly_name": "Advanced SSH & Web Terminal Update",
+  "state": "on",
+  "unit_of_measurement": null
+ },
+ "update.home_assistant_core_update": {
+  "device_class": null,
+  "friendly_name": "Home Assistant Core Update",
+  "state": "on",
+  "unit_of_measurement": null
+ },
+ "update.home_assistant_operating_system_update": {
+  "device_class": null,
+  "friendly_name": "Home Assistant Operating System Update",
+  "state": "on",
+  "unit_of_measurement": null
+ },
+ "update.home_assistant_supervisor_update": {
+  "device_class": null,
+  "friendly_name": "Home Assistant Supervisor Update",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "update.mosquitto_broker_update": {
+  "device_class": null,
+  "friendly_name": "Mosquitto broker Update",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "update.raspberry_pi_4_firmware": {
+  "device_class": "firmware",
+  "friendly_name": "Raspberry Pi 4 Firmware",
+  "state": "off",
+  "unit_of_measurement": null
+ },
+ "weather.forecast_home": {
+  "device_class": null,
+  "friendly_name": "Forecast Home",
+  "state": "clear-night",
+  "unit_of_measurement": null
+ },
+ "zone.home": {
+  "device_class": null,
+  "friendly_name": "Home",
+  "state": "1",
+  "unit_of_measurement": null
+ }
+}
