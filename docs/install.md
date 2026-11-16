@@ -7,18 +7,18 @@ Use Raspberry Pi Imager with the following OS customisation settings:
 - **Device**: Raspberry Pi 5
 - **OS**: Raspberry Pi OS (64-bit) — Debian **Trixie** desktop (Wayland / `labwc`)
 - **Hostname**: `kitchen-display`
-- **Username**: `kiosk`
+- **Username**: `hermes`
 - **SSH**: Enabled, public-key authentication only (paste the owner's SSH public key)
 - **Locale / Timezone**: `Europe/London`
 
 ## 2. First Boot & Clone
 
-Connect the Raspberry Pi 5 to the LAN over Ethernet, connect the Waveshare 10.1" HDMI + USB touch cable, and power on with the official 27W USB-C PSU.
+Ensure the Raspberry Pi 5 joins the LAN over Wi-Fi (`802.11`), connect the Waveshare 10.1" HDMI + USB touch cable, and power on with the official 27W USB-C PSU.
 
 From a workstation on the LAN:
 
 ```bash
-ssh kiosk@kitchen-display.local
+ssh hermes@kitchen-display.local
 git clone <repo-url> ~/kitchen-display
 cd ~/kitchen-display
 ```
@@ -28,11 +28,11 @@ cd ~/kitchen-display
 Preview the provisioning plan first, then execute as root:
 
 ```bash
-./provision/install.sh --dry-run
-sudo KIOSK_USER=kiosk ./provision/install.sh
+KIOSK_USER=hermes ./provision/install.sh --dry-run
+sudo KIOSK_USER=hermes ./provision/install.sh
 ```
 
-If Home Assistant credentials or custom URL overrides are needed, edit `~/.config/kitchen-display/env` (kept at mode `0600`).
+This configures `labwc` autologin for `hermes`, seeds `~/.local/share/kitchen-display/solar.html` (if absent), and enables both `kitchen-display.service` (scaled via `KIOSK_SCALE=1.5` for a 1280x800 logical viewport) and `kitchen-display-http.service` (serving `~/.local/share/kitchen-display/` on `:8788`). If Home Assistant credentials, `KIOSK_SCALE`, or custom URL overrides are needed, edit `~/.config/kitchen-display/env` (kept at mode `0600`).
 
 ## 4. Push the Home Assistant Dashboard
 
@@ -52,8 +52,9 @@ Run on `kitchen-display` over SSH:
 
 1. **User unit status**:
    ```bash
-   systemctl --user status kitchen-display.service
+   systemctl --user status kitchen-display.service kitchen-display-http.service
    ```
+   Confirm `curl -I http://127.0.0.1:8788/solar.html` returns `200 OK`.
 2. **Screen blank and wake (`wlopm` on `HDMI-A-1`)**:
    ```bash
    WAYLAND_DISPLAY=wayland-0 wlopm --off HDMI-A-1
@@ -68,4 +69,4 @@ Run on `kitchen-display` over SSH:
    ```bash
    head -c 200 ~/.config/kitchen-display/url
    ```
-   Confirm `http://192.168.178.84/kitchen-display/home?kiosk` loads on the display and recovers automatically after `sudo reboot`.
+   Confirm `http://192.168.178.84/kitchen-display/home?kiosk` loads on the display (including `Home`, `Energy` with East/West Forecast.Solar planes, and `Solar` panel webpage card at `:8788/solar.html`) and recovers automatically after `sudo reboot`.

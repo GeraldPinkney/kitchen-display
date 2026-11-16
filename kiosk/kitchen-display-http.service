@@ -1,0 +1,13 @@
+[Unit]
+Description=Kitchen display local static HTTP server (:8788)
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/kitchen-display/env
+ExecStart=/usr/bin/python3 -m http.server 8788 --bind 0.0.0.0 --directory %h/.local/share/kitchen-display
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

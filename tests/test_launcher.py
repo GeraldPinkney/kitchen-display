@@ -84,3 +84,14 @@ def test_launcher_suppresses_browser_chrome(repo_root, tmp_path):
     for flag in ("--noerrdialogs", "--disable-infobars", "--no-first-run",
                  "--disable-session-crashed-bubble"):
         assert flag in args, flag
+
+
+def test_default_scale_factor_is_1_5_for_10_inch_panel(repo_root, tmp_path):
+    args = run_launcher(repo_root, tmp_path)
+    assert "--force-device-scale-factor=1.5" in args, args
+    assert "--touch-events=enabled" in args, args
+
+
+def test_kiosk_scale_env_overrides_default_scale_factor(repo_root, tmp_path):
+    args = run_launcher(repo_root, tmp_path, extra_env={"KIOSK_SCALE": "1.25"})
+    assert "--force-device-scale-factor=1.25" in args, args

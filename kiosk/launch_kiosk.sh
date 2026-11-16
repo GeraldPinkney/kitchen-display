@@ -4,6 +4,7 @@ set -euo pipefail
 
 DEFAULT_URL="http://192.168.178.84/kitchen-display/home?kiosk"
 URL_FILE="${KIOSK_URL_FILE:-${HOME}/.config/kitchen-display/url}"
+KIOSK_SCALE="${KIOSK_SCALE:-1.5}"
 
 FILE_URL=""
 if [[ -r "$URL_FILE" ]]; then
@@ -21,6 +22,8 @@ fi
 exec chromium \
     --kiosk \
     --ozone-platform=wayland \
+    --force-device-scale-factor="${KIOSK_SCALE}" \
+    --touch-events=enabled \
     --noerrdialogs \
     --disable-infobars \
     --disable-session-crashed-bubble \

@@ -35,6 +35,36 @@ def test_repo_dashboard_has_home_and_energy_views(config):
     assert "home" in paths and "energy" in paths
 
 
+def test_repo_dashboard_has_panel_solar_webpage_view(config):
+    solar_views = [v for v in config["views"] if v.get("path") == "solar"]
+    assert len(solar_views) == 1, [v.get("path") for v in config["views"]]
+    solar = solar_views[0]
+    assert solar.get("title") == "Solar"
+    assert solar.get("panel") is True
+    cards = solar.get("cards", [])
+    assert len(cards) == 1
+    assert cards[0].get("type") == "webpage"
+    assert cards[0].get("url") == "http://192.168.178.56:8788/solar.html"
+
+
+def test_energy_view_surfaces_east_and_west_forecast_planes(dc, config):
+    energy_views = [v for v in config["views"] if v.get("path") == "energy"]
+    assert len(energy_views) == 1
+    eids = dc.collect_entity_ids(energy_views[0])
+    required = {
+        "sensor.energy_production_today_2",
+        "sensor.energy_production_today_remaining_2",
+        "sensor.energy_production_tomorrow_2",
+        "sensor.power_production_now_2",
+        "sensor.energy_production_today_3",
+        "sensor.energy_production_today_remaining_3",
+        "sensor.energy_production_tomorrow_3",
+        "sensor.power_production_now_3",
+    }
+    missing = required - eids
+    assert not missing, f"energy view missing EW plane forecast entities: {sorted(missing)}"
+
+
 def test_unknown_entity_is_reported(dc, live_entity_ids):
     cfg = {
         "title": "t",

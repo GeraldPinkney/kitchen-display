@@ -1,3 +1,5 @@
 # labwc autostart entry for kitchen-display
+(pgrep -x kanshi >/dev/null || kanshi) &
+(sleep 1 && systemctl --user start kitchen-display-http.service) &
 (sleep 2 && systemctl --user start kitchen-display.service) &
 swayidle -w timeout 600 'wlopm --off HDMI-A-1' resume 'wlopm --on HDMI-A-1' &

@@ -69,27 +69,56 @@ views:
                 name: Grid Import
               - entity: sensor.luxpower_grid_export
                 name: Grid Export
-      - type: entities
-        title: PV Forecast vs Production
-        entities:
-          - entity: sensor.power_production_now
-            name: Estimated Power Now
-          - entity: sensor.energy_current_hour
-            name: Forecast This Hour
-          - entity: sensor.energy_next_hour
-            name: Forecast Next Hour
-          - entity: sensor.energy_production_today
-            name: Forecast Today Total
-          - entity: sensor.energy_production_today_remaining
-            name: Forecast Today Remaining
-          - entity: sensor.energy_production_tomorrow
-            name: Forecast Tomorrow
-          - entity: sensor.power_highest_peak_time_today
-            name: Peak Time Today
+      - type: horizontal-stack
+        cards:
+          - type: entities
+            title: Forecast — East Plane
+            entities:
+              - entity: sensor.power_production_now_2
+                name: Estimated Power Now
+              - entity: sensor.energy_current_hour_2
+                name: Forecast This Hour
+              - entity: sensor.energy_next_hour_2
+                name: Forecast Next Hour
+              - entity: sensor.energy_production_today_2
+                name: Forecast Today Total
+              - entity: sensor.energy_production_today_remaining_2
+                name: Forecast Today Remaining
+              - entity: sensor.energy_production_tomorrow_2
+                name: Forecast Tomorrow
+              - entity: sensor.power_highest_peak_time_today_2
+                name: Peak Time Today
+          - type: entities
+            title: Forecast — West Plane
+            entities:
+              - entity: sensor.power_production_now_3
+                name: Estimated Power Now
+              - entity: sensor.energy_current_hour_3
+                name: Forecast This Hour
+              - entity: sensor.energy_next_hour_3
+                name: Forecast Next Hour
+              - entity: sensor.energy_production_today_3
+                name: Forecast Today Total
+              - entity: sensor.energy_production_today_remaining_3
+                name: Forecast Today Remaining
+              - entity: sensor.energy_production_tomorrow_3
+                name: Forecast Tomorrow
+              - entity: sensor.power_highest_peak_time_today_3
+                name: Peak Time Today
       - type: history-graph
         title: Power History
+        hours_to_show: 12
         entities:
           - sensor.luxpower_solar_power
           - sensor.luxpower_home_consumption
           - sensor.luxpower_grid_import
-          - sensor.power_production_now
+          - sensor.power_production_now_2
+          - sensor.power_production_now_3
+
+  - title: Solar
+    path: solar
+    icon: mdi:solar-power-variant
+    panel: true
+    cards:
+      - type: webpage
+        url: http://192.168.178.56:8788/solar.html

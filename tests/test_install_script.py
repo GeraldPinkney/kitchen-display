@@ -3,6 +3,7 @@
 Behaviour is tested through --dry-run, which must plan the work without
 touching the system, and must be deterministic so two runs can be diffed.
 """
+import os
 import pathlib
 import shutil
 import subprocess
@@ -36,9 +37,26 @@ def test_dry_run_succeeds_and_plans_every_component(repo_root):
     proc = run_dry(repo_root)
     assert proc.returncode == 0, proc.stderr
     out = (proc.stdout + proc.stderr).lower()
-    for needle in ("apt", "chromium", "swayidle", "wlopm", "kitchen-display.service",
-                   "autostart", "reboot"):
+    for needle in ("apt", "chromium", "swayidle", "wlopm", "kanshi",
+                   "kitchen-display.service", "kitchen-display-http.service",
+                   ".local/share/kitchen-display", "autostart", "reboot"):
         assert needle in out, f"dry-run output does not mention {needle}:\n{proc.stdout}"
+
+
+def test_dry_run_honours_kiosk_user_override(repo_root):
+    env = dict(os.environ, KIOSK_USER="hermes")
+    proc = subprocess.run(
+        ["/bin/bash", str(script_path(repo_root)), "--dry-run"],
+        capture_output=True, text=True, timeout=60, cwd=str(repo_root), env=env,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "/home/hermes/.config/kitchen-display" in proc.stdout
+    assert "/home/hermes/.local/share/kitchen-display" in proc.stdout
+
+
+def test_install_passes_kiosk_user_as_sudo_user_to_raspi_config(repo_root):
+    body = script_path(repo_root).read_text()
+    assert 'SUDO_USER="${KIOSK_USER}" raspi-config nonint do_boot_behaviour B4' in body
 
 
 def test_dry_run_is_deterministic(repo_root):
