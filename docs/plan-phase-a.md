@@ -1,6 +1,6 @@
 # Phase A — software build (no hardware)
 
-Status: **in progress** · owner: Gerald · branch: `kitchen/phase-a`
+Status: **complete** · owner: Gerald · merged to `main` as `8e18dd3` on 2026-11-16
 
 ## Scope
 
