@@ -17,7 +17,7 @@ LABWC_DIR="${KIOSK_HOME}/.config/labwc"
 AUTOSTART_DEST="${LABWC_DIR}/autostart"
 REBOOT_SERVICE="/etc/systemd/system/kitchen-display-reboot.service"
 REBOOT_TIMER="/etc/systemd/system/kitchen-display-reboot.timer"
-DEFAULT_URL="http://192.168.178.84/kitchen/home?kiosk"
+DEFAULT_URL="http://192.168.178.84/kitchen-display/home?kiosk"
 
 PACKAGES=(
     labwc
@@ -90,7 +90,7 @@ if [[ ! -f "${ENV_FILE}" ]]; then
     cat > "${ENV_FILE}" <<'EOF'
 # Kitchen display private environment settings (chmod 600).
 # Optionally set KIOSK_URL or Home Assistant credentials here.
-# KIOSK_URL=http://192.168.178.84/kitchen/home?kiosk
+# KIOSK_URL=http://192.168.178.84/kitchen-display/home?kiosk
 EOF
 fi
 chown "${KIOSK_USER}:${KIOSK_GROUP}" "${ENV_FILE}"

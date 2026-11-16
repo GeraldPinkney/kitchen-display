@@ -10,7 +10,7 @@ import subprocess
 import pytest
 
 SCRIPT = "kiosk/launch_kiosk.sh"
-DEFAULT_URL = "http://192.168.178.84/kitchen/home?kiosk"
+DEFAULT_URL = "http://192.168.178.84/kitchen-display/home?kiosk"
 
 
 def run_launcher(repo_root, tmp_path, extra_env=None, url_file=None, default_url_file=False):

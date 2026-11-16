@@ -16,7 +16,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "ha" / "kitchen_dashboard.yaml"
 DEFAULT_FIXTURE = ROOT / "tests" / "fixtures" / "ha_states.json"
 
-DASHBOARD_URL_PATH = "kitchen"
+DASHBOARD_URL_PATH = "kitchen-display"
 DASHBOARD_TITLE = "Kitchen"
 DASHBOARD_ICON = "mdi:silverware-fork-knife"
 

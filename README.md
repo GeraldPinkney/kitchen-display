@@ -21,8 +21,8 @@ Countertop kitchen touch display for the Pinkney homelab, running a Home Assista
 - **Nightly Maintenance**: A systemd timer (`kitchen-display-reboot.timer`) reboots the Pi daily at `03:00`.
 - **Configuration & Secrets**:
   - `~/.config/kitchen-display/env` (`chmod 600`) stores private environment variables and secrets (never committed to git).
-  - `~/.config/kitchen-display/url` overrides the target URL (defaults to `http://192.168.178.84/kitchen/home?kiosk`).
-- **Home Assistant Dashboard**: Storage-mode Lovelace dashboard at `url_path: kitchen` (`ha/kitchen_dashboard.yaml`), using only built-in Home Assistant cards (no HACS dependencies) with `home` and `energy` views.
+  - `~/.config/kitchen-display/url` overrides the target URL (defaults to `http://192.168.178.84/kitchen-display/home?kiosk`).
+- **Home Assistant Dashboard**: Storage-mode Lovelace dashboard at `url_path: kitchen-display` (`ha/kitchen_dashboard.yaml`), using only built-in Home Assistant cards (no HACS dependencies) with `home` and `energy` views.
 
 ## Repository Layout
 

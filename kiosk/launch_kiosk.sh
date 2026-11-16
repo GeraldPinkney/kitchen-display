@@ -2,7 +2,7 @@
 # Kitchen display kiosk launcher (Raspberry Pi OS Trixie Wayland/labwc).
 set -euo pipefail
 
-DEFAULT_URL="http://192.168.178.84/kitchen/home?kiosk"
+DEFAULT_URL="http://192.168.178.84/kitchen-display/home?kiosk"
 URL_FILE="${KIOSK_URL_FILE:-${HOME}/.config/kitchen-display/url}"
 
 FILE_URL=""

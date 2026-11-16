@@ -68,4 +68,4 @@ Run on `kitchen-display` over SSH:
    ```bash
    head -c 200 ~/.config/kitchen-display/url
    ```
-   Confirm `http://192.168.178.84/kitchen/home?kiosk` loads on the display and recovers automatically after `sudo reboot`.
+   Confirm `http://192.168.178.84/kitchen-display/home?kiosk` loads on the display and recovers automatically after `sudo reboot`.

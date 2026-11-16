@@ -14,7 +14,7 @@ script. Hardware steps (Phase B/C) are out of scope.
   (binary name), no `xset`/`xdotool`/`unclutter`.
 - Kiosk = labwc session (autologin) + systemd **user** unit for auto-restart.
 - Screen blanking = `swayidle` + `wlopm` on `HDMI-A-1`; touch resumes.
-- Dashboard = HA storage dashboard at `url_path: kitchen`, `?kiosk` suffix.
+- Dashboard = HA storage dashboard at `url_path: kitchen-display` (HA requires a hyphen), `?kiosk` suffix.
 
 ## Deliverables
 
@@ -41,7 +41,7 @@ implementation, then refactor. Backups of the replaced files are kept as
 
 1. `pytest tests/ -q` green.
 2. `tools/dashboard_check.py --live` reports zero errors against HA.
-3. Dashboard pushed and reachable at `http://192.168.178.84/kitchen/home?kiosk`.
+3. Dashboard pushed and reachable at `http://192.168.178.84/kitchen-display/home?kiosk`.
 4. `install.sh --dry-run` deterministic and non-destructive.
 5. No secret material in any tracked file.
 

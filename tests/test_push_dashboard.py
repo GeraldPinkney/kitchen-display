@@ -38,41 +38,42 @@ def push():
 
 def test_creates_the_dashboard_when_missing(push):
     ha = FakeHA()
-    result = push.ensure_dashboard(ha.call, ha.dashboards, "kitchen", "Kitchen", "mdi:silverware-fork-knife")
-    assert result["url_path"] == "kitchen"
+    result = push.ensure_dashboard(ha.call, ha.dashboards, "kitchen-display", "Kitchen", "mdi:silverware-fork-knife")
+    assert result["url_path"] == "kitchen-display"
     creates = [c for c in ha.calls if c[0] == "lovelace/dashboards/create"]
     assert len(creates) == 1
     payload = creates[0][1]
-    assert payload["url_path"] == "kitchen"
+    assert payload["url_path"] == "kitchen-display"
     assert payload["title"] == "Kitchen"
     assert payload["mode"] == "storage"
     assert payload["show_in_sidebar"] is True
 
 
 def test_reuses_an_existing_dashboard(push):
-    ha = FakeHA(dashboards=[{"url_path": "kitchen", "mode": "storage", "title": "Kitchen"}])
-    result = push.ensure_dashboard(ha.call, ha.dashboards, "kitchen", "Kitchen", "mdi:silverware-fork-knife")
-    assert result["url_path"] == "kitchen"
+    ha = FakeHA(dashboards=[{"url_path": "kitchen-display", "mode": "storage", "title": "Kitchen"}])
+    result = push.ensure_dashboard(ha.call, ha.dashboards, "kitchen-display", "Kitchen", "mdi:silverware-fork-knife")
+    assert result["url_path"] == "kitchen-display"
     assert not [c for c in ha.calls if c[0] == "lovelace/dashboards/create"]
 
 
 def test_saves_the_config_for_the_dashboard(push):
     ha = FakeHA()
     config = {"title": "Kitchen", "views": [{"title": "Home", "path": "home", "cards": []}]}
-    push.push_config(ha.call, "kitchen", config)
+    push.push_config(ha.call, "kitchen-display", config)
     saves = [c for c in ha.calls if c[0] == "lovelace/config/save"]
     assert len(saves) == 1
-    assert saves[0][1]["url_path"] == "kitchen"
+    assert saves[0][1]["url_path"] == "kitchen-display"
     assert saves[0][1]["config"] == config
 
 
 def test_transport_failure_raises(push):
     ha = FakeHA(fail_on="lovelace/config/save")
     with pytest.raises(push.HAError) as excinfo:
-        push.push_config(ha.call, "kitchen", {"views": []})
+        push.push_config(ha.call, "kitchen-display", {"views": []})
     assert "boom" in str(excinfo.value)
 
 
 def test_dashboard_url_path_matches_the_kiosk_default(push):
-    # launch_kiosk.sh defaults to http://<ha>/kitchen/home?kiosk
-    assert push.DASHBOARD_URL_PATH == "kitchen"
+    # HA requires a hyphen in url_path, and launch_kiosk.sh must agree with it.
+    assert push.DASHBOARD_URL_PATH == "kitchen-display"
+    assert "-" in push.DASHBOARD_URL_PATH and push.DASHBOARD_URL_PATH != "lovelace"
