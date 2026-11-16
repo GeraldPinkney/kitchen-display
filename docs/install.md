@@ -70,3 +70,7 @@ Run on `kitchen-display` over SSH:
    head -c 200 ~/.config/kitchen-display/url
    ```
    Confirm `http://192.168.178.84/kitchen-display/home?kiosk` loads on the display (including `Home`, `Energy` with East/West Forecast.Solar planes, and `Solar` panel webpage card at `:8788/solar.html`) and recovers automatically after `sudo reboot`.
+
+## Network
+
+WiFi is the design, not a fallback: `eth0` reports `NO-CARRIER` and stays unwired. Do not "fix" it by cabling the panel — the kiosk, the `:8788` HTTP server and the dashboard all resolve over WiFi, and the publish path (`scp` from the host) uses the same address.
