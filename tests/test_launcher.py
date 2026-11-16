@@ -86,6 +86,14 @@ def test_launcher_suppresses_browser_chrome(repo_root, tmp_path):
         assert flag in args, flag
 
 
+def test_launcher_uses_basic_password_store(repo_root, tmp_path):
+    # No login keyring exists for the autologin kiosk user, so chromium's
+    # cookie-store key load blocks on libsecret forever and the panel stays
+    # white. --password-store=basic bypasses the keyring entirely.
+    args = run_launcher(repo_root, tmp_path)
+    assert "--password-store=basic" in args, args
+
+
 def test_default_scale_factor_is_1_5_for_10_inch_panel(repo_root, tmp_path):
     args = run_launcher(repo_root, tmp_path)
     assert "--force-device-scale-factor=1.5" in args, args

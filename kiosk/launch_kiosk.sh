@@ -28,6 +28,7 @@ exec chromium \
     --disable-infobars \
     --disable-session-crashed-bubble \
     --no-first-run \
+    --password-store=basic \
     --disable-features=Translate,InterestCohort \
     --overscroll-history-navigation=0 \
     "$URL"
