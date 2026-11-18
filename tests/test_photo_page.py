@@ -68,6 +68,19 @@ def test_photo_page_logic_covers_manifest_shuffle_preload_error_skip_and_fallbac
     assert "% items.length" in body
 
 
+def test_photo_page_returns_to_the_dashboard_on_first_touch(repo_root):
+    """The compositor's swayidle resume does not fire for touch on this panel, so the
+    page must navigate back itself: document-level listeners, guarded from a bounce
+    immediately after load, using location.replace so the frame is not in history."""
+    body = (repo_root / "kiosk" / "photo.html").read_text(encoding="utf-8")
+
+    for event_type in ("pointerdown", "touchstart", "mousedown", "keydown"):
+        assert f'"{event_type}"' in body, event_type
+    assert "document.addEventListener(type, leave" in body
+    assert "LEAVE_GUARD_MS" in body
+    assert "window.location.replace(getReturnUrl())" in body
+
+
 def test_photo_manifest_fixture_matches_contract(repo_root):
     manifest = json.loads((repo_root / "tests" / "fixtures" / "photo_manifest.json").read_text(encoding="utf-8"))
     assert manifest["count"] == len(manifest["items"])

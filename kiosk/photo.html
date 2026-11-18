@@ -44,6 +44,24 @@
       const DEFAULT_RETURN_URL = "http://192.168.178.84/kitchen-display/home?kiosk";
       const MANIFEST_PATH = "photos/manifest.json";
       const SLIDE_INTERVAL_MS = 10000;
+      // Touch is the documented way out of the frame. The panel's compositor does
+      // not report touch as activity to swayidle (observed 2026-11-18: idle fired
+      // twice around a touch, no resume), so the page owns the exit itself.
+      const LEAVE_GUARD_MS = 700;
+      const armedAt = Date.now();
+      let leaving = false;
+
+      function leave() {
+        if (leaving || Date.now() - armedAt < LEAVE_GUARD_MS) {
+          return;
+        }
+        leaving = true;
+        window.location.replace(getReturnUrl());
+      }
+
+      for (const type of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
+        document.addEventListener(type, leave, { capture: true, passive: true });
+      }
 
       function getReturnUrl() {
         try {
