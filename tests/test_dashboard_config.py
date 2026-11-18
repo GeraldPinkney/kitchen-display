@@ -35,7 +35,7 @@ def test_repo_dashboard_has_home_and_energy_views(config):
     assert "home" in paths and "energy" in paths
 
 
-def test_repo_dashboard_has_panel_solar_webpage_view(config):
+def test_repo_dashboard_has_panel_solar_iframe_view(config):
     solar_views = [v for v in config["views"] if v.get("path") == "solar"]
     assert len(solar_views) == 1, [v.get("path") for v in config["views"]]
     solar = solar_views[0]
@@ -43,8 +43,9 @@ def test_repo_dashboard_has_panel_solar_webpage_view(config):
     assert solar.get("panel") is True
     cards = solar.get("cards", [])
     assert len(cards) == 1
-    assert cards[0].get("type") == "webpage"
+    assert cards[0].get("type") == "iframe", "iframe is the built-in card; webpage is not a card type"
     assert cards[0].get("url") == "http://192.168.178.56:8788/solar.html"
+    assert "aspect_ratio" in cards[0]
 
 
 def test_energy_view_surfaces_east_and_west_forecast_planes(dc, config):
@@ -87,6 +88,31 @@ def test_hacs_card_is_rejected(dc, live_entity_ids):
     }
     errors = dc.validate(cfg, live_entity_ids)
     assert any("custom:button-card" in e for e in errors), errors
+
+
+def test_unknown_card_type_is_rejected(dc, live_entity_ids):
+    """`webpage` is not a card type: HA renders it as 'Configuration error' (#12)."""
+    cfg = {
+        "title": "t",
+        "views": [{"title": "x", "path": "x", "cards": [{"type": "webpage", "url": "http://h/x"}]}],
+    }
+    errors = dc.validate(cfg, live_entity_ids)
+    assert any("webpage" in e and "Configuration error" in e for e in errors), errors
+
+
+def test_iframe_card_is_accepted(dc, live_entity_ids):
+    cfg = {
+        "title": "t",
+        "views": [
+            {
+                "title": "x",
+                "path": "x",
+                "panel": True,
+                "cards": [{"type": "iframe", "url": "http://h/x", "aspect_ratio": "100%"}],
+            }
+        ],
+    }
+    assert dc.validate(cfg, live_entity_ids) == []
 
 
 def test_entities_in_nested_cards_are_collected(dc, live_entity_ids):

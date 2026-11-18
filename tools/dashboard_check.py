@@ -20,6 +20,22 @@ DEFAULT_FIXTURE = ROOT / "tests" / "fixtures" / "ha_states.json"
 ENTITY_ID_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 VIEW_PATH_RE = re.compile(r"^[a-z0-9_-]+$")
 
+# Card types that ship with Home Assistant itself. A type outside this set (and
+# outside the `custom:` prefix, which is rejected outright) renders as HA's
+# "Configuration error" card on the panel — `type: webpage` did exactly that.
+BUILTIN_CARD_TYPES = frozenset({
+    "alarm-panel", "area", "button", "calendar", "clock", "conditional",
+    "energy-carbon-consumed-gauge", "energy-date-selection", "energy-distribution",
+    "energy-gas-graph", "energy-grid-neutrality-gauge", "energy-solar-graph",
+    "energy-sources-table", "energy-self-sufficiency-gauge", "energy-usage-graph",
+    "energy-water-graph", "entities", "entity", "entity-filter", "gauge", "glance",
+    "grid", "heading", "history-graph", "horizontal-stack", "humidifier", "iframe",
+    "light", "logbook", "map", "markdown", "media-control", "picture",
+    "picture-elements", "picture-entity", "picture-glance", "plant-status", "sensor",
+    "shopping-list", "statistic", "statistics-graph", "thermostat", "tile",
+    "todo-list", "vertical-stack", "weather-forecast",
+})
+
 
 def load_config(path: str | os.PathLike[str]) -> dict[str, Any]:
     """Load a YAML dashboard configuration file."""
@@ -70,6 +86,11 @@ def _validate_cards(cards: list[Any], errors: list[str]) -> None:
             errors.append(f"card is missing required 'type': {card!r}")
         elif card_type.startswith("custom:"):
             errors.append(f"custom HACS card type is not allowed: {card_type}")
+        elif card_type not in BUILTIN_CARD_TYPES:
+            errors.append(
+                f"unknown card type '{card_type}': not a Home Assistant built-in "
+                f"(it would render as 'Configuration error' on the panel)"
+            )
 
         nested_cards = card.get("cards")
         if isinstance(nested_cards, list):

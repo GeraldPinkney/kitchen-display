@@ -120,5 +120,9 @@ views:
     icon: mdi:solar-power-variant
     panel: true
     cards:
-      - type: webpage
+      # `iframe` is the built-in card; `webpage` is not a card type at all and
+      # rendered HA's "Configuration error" on the panel (kitchen-display#12).
+      # The page itself is fluid, so it fills the frame instead of cropping.
+      - type: iframe
         url: http://192.168.178.56:8788/solar.html
+        aspect_ratio: "100%"
