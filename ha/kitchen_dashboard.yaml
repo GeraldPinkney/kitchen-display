@@ -126,3 +126,12 @@ views:
       - type: iframe
         url: http://192.168.178.56:8788/solar.html
         aspect_ratio: "100%"
+
+  - title: Performance
+    path: performance
+    icon: mdi:chart-line
+    panel: true
+    cards:
+      - type: iframe
+        url: http://192.168.178.56:8788/performance.html
+        aspect_ratio: "100%"
