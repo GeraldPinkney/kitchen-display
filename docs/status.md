@@ -20,12 +20,12 @@ work-tracking rule in `AGENTS.md`).
 | #6 HA Lovelace dashboard (in progress) | dashboard content, K11 kiosk chrome |
 | #8 Boot hardening (todo, needs root) | K3 journald, K4 reboot acceptance, K6 nightly schedule, K7 provisioning, boot-clock skew |
 | #11 K9 panel health cron (todo) | K9 |
-| #12 Solar view renders "Configuration error" (todo) | dashboard embed of the solar page — invalid `type: webpage` card, **owner decision needed (options A-D on the card)** |
+| #12 Solar view shows "Configuration error" (closed) | dashboard embed: `type: webpage` → built-in `iframe` + a fluid page (TASK-75 in the optimizer board) |
 | #5 Physical build (todo, owner confirm) | mount/wiring, closes on owner's word |
 | #10 Polish, docs, v1.0 | README, docs, tag |
 
 Closed: #1 hardware, #2 repo prep, #3 solar page, #7 display toggle, #9 power draw
-(not planned — the smart plug was dropped as K12).
+(not planned — the smart plug was dropped as K12), #12 solar embed.
 
 ## Hardware and endpoints
 
@@ -91,7 +91,14 @@ session now lives in `~/.config/chromium/Default/Local Storage/leveldb/`.
 ## Verified evidence (re-runnable)
 
 - Suite: `cd /opt/data/kitchen-display && /opt/data/venvs/kitchen-tests/bin/python -m pytest -o cache_dir=/opt/data/cache/scratch/pytest-cache -q`
-  → 45 passed, 1 skipped (2026-11-18).
+  → 47 passed, 1 skipped (2026-11-18, after #12).
+- Solar view embed (#12), measured over CDP on the live dashboard at 1280x800:
+  `/opt/data/cache/scratch/cdp_probe2.py http://192.168.178.84/kitchen-display/solar 1280 800 out.png`
+  → one iframe, src `http://192.168.178.56:8788/solar.html`, rect 1024x744 at (256,56),
+  `errors: []`. The card is a shadow-DOM child, so a plain `querySelectorAll('iframe')`
+  finds nothing — the probe walks shadow roots.
+- The page itself is fluid now: it must not contain `width: 1280px`. Check the served
+  copy with `curl -s http://192.168.178.56:8788/solar.html | grep -c 100dvh` ≥ 1.
 - Authenticated panel: page title must be `Kitchen – Home Assistant` (the login page
   is plain `Home Assistant`). Read it with CDP on a throwaway instance.
 - Session probe: `/opt/data/cache/scratch/ha_session_check.py` (copied to `/tmp` on
@@ -145,14 +152,12 @@ too. Either the owner runs those, or adds a scoped drop-in:
 
 ## Next actions, in order
 
-1. **#12 decision (owner):** which of A-D — iframe one-liner, iframe + fluid page (recommended),
-   native HA rebuild, or keep the full-screen toggle only. Nothing else is blocked on it.
-2. K9 (#11): build the health cron — unblocked, no root needed.
-3. Owner: install `wvkbd` and grant the sudo drop-in (or run the #8 checklist by hand),
+1. K9 (#11): build the health cron — unblocked, no root needed.
+2. Owner: install `wvkbd` and grant the sudo drop-in (or run the #8 checklist by hand),
    starting with journald and the nightly timer.
-4. K11 (#6): decide whether the visible sidebar/header matters; close the card either way.
-5. #5: owner confirms the physical mount, then it closes.
-6. #10: README + BOM + tag `v1.0` once the above are closed.
+3. K11 (#6): decide whether the visible sidebar/header matters; close the card either way.
+4. #5: owner confirms the physical mount, then it closes.
+5. #10: README + BOM + tag `v1.0` once the above are closed.
 
 ## Backups and scratch
 
