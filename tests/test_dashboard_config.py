@@ -48,6 +48,19 @@ def test_repo_dashboard_has_panel_solar_iframe_view(config):
     assert "aspect_ratio" in cards[0]
 
 
+def test_repo_dashboard_has_panel_performance_iframe_view(config):
+    perf_views = [v for v in config["views"] if v.get("path") == "performance"]
+    assert len(perf_views) == 1, [v.get("path") for v in config["views"]]
+    perf = perf_views[0]
+    assert perf.get("title") == "Performance"
+    assert perf.get("panel") is True
+    cards = perf.get("cards", [])
+    assert len(cards) == 1
+    assert cards[0].get("type") == "iframe"
+    assert cards[0].get("url") == "http://192.168.178.56:8788/performance.html"
+    assert "aspect_ratio" in cards[0]
+
+
 def test_energy_view_surfaces_east_and_west_forecast_planes(dc, config):
     energy_views = [v for v in config["views"] if v.get("path") == "energy"]
     assert len(energy_views) == 1
