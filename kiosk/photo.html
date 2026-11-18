@@ -43,7 +43,9 @@
 
       const DEFAULT_RETURN_URL = "http://192.168.178.84/kitchen-display/home?kiosk";
       const MANIFEST_PATH = "photos/manifest.json";
-      const SLIDE_INTERVAL_MS = 10000;
+      // 30 s per photo: with 300 photos that is a ~2.5 h cycle, so a photo returns
+      // about once a day at the panel's idle rate (#17).
+      const SLIDE_INTERVAL_MS = 30000;
       // Touch is the documented way out of the frame. The panel's compositor does
       // not report touch as activity to swayidle (observed 2026-11-18: idle fired
       // twice around a touch, no resume), so the page owns the exit itself.

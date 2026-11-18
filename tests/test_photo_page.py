@@ -61,7 +61,7 @@ def test_photo_page_logic_covers_manifest_shuffle_preload_error_skip_and_fallbac
     assert "photos/manifest.json" in body
     assert "location.replace" in body
     assert '"return"' in body
-    assert "10000" in body
+    assert "30000" in body
     assert "new Image()" in body
     assert "onerror" in body
     assert "Math.random()" in body
