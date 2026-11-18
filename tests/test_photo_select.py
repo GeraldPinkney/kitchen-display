@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 import hashlib
 import math
 import random
+from types import SimpleNamespace
 
 from PIL import Image, ImageFilter
 import pytest
@@ -391,8 +392,8 @@ def test_select_pairing_backdrops_and_determinism():
     )
     normal_landscape = _cand(
         "trip/normal.jpg",
-        width=1800,
-        height=1200,  # 1.50
+        width=2400,
+        height=1600,  # 1.50, and long side >= COVER_MIN_LONG_SIDE so it keeps the cover path
         captured_at=datetime(2026, 9, 22, 10, 0),
         sharpness=150.0,
         dhash=1 << 60,
@@ -492,3 +493,141 @@ def test_day_order_repairs_every_avoidable_adjacency():
             continue
         _assert_valid_order(clusters, seed=TODAY + timedelta(days=step))
         checked += 1
+
+
+def test_needs_backdrop_size_and_aspect_thresholds():
+    assert photo_select.COVER_MIN_LONG_SIDE == 1920
+    assert photo_select.needs_backdrop(1280, 960) is True
+    assert photo_select.needs_backdrop(1920, 1440) is False
+    assert photo_select.needs_backdrop(1920, 1200) is False
+    assert photo_select.needs_backdrop(2400, 1080) is True
+    assert photo_select.needs_backdrop(1200, 1600) is True
+
+
+def test_select_routes_short_landscape_to_backdrop():
+    short_landscape = _cand("trip/small.jpg", width=1280, height=960, dhash=_distinct_hash("short"))
+    sel = photo_select.select([short_landscape], today=TODAY)
+    assert len(sel.slides) == 1
+    assert sel.slides[0].key == "trip/small.jpg"
+    assert sel.slides[0].kind == "backdrop"
+
+
+def test_select_routes_full_res_landscape_to_single():
+    full_res = _cand("trip/full.jpg", width=4032, height=3024, dhash=_distinct_hash("full"))
+    sel = photo_select.select([full_res], today=TODAY)
+    assert len(sel.slides) == 1
+    assert sel.slides[0].key == "trip/full.jpg"
+    assert sel.slides[0].kind == "single"
+
+
+def test_select_routes_panorama_to_backdrop():
+    panorama = _cand("trip/wide.jpg", width=2400, height=1080, dhash=_distinct_hash("pano"))
+    sel = photo_select.select([panorama], today=TODAY)
+    assert len(sel.slides) == 1
+    assert sel.slides[0].key == "trip/wide.jpg"
+    assert sel.slides[0].kind == "backdrop"
+
+
+def test_select_excludes_under_admit_min_long_side():
+    too_small = _cand("trip/tiny.jpg", width=1199, height=900, dhash=_distinct_hash("tiny"))
+    sel = photo_select.select([too_small], today=TODAY)
+    assert sel.slides == ()
+    assert sel.rejected["too_small"] == 1
+
+
+def test_select_pairing_unaffected_for_portraits_under_cover_min():
+    left = _cand(
+        "trip/p1.jpg",
+        width=1200,
+        height=1600,
+        captured_at=datetime(2026, 11, 1, 10, 0),
+        dhash=_distinct_hash("p1"),
+    )
+    right = _cand(
+        "trip/p2.jpg",
+        width=1200,
+        height=1600,
+        captured_at=datetime(2026, 11, 1, 11, 0),
+        dhash=_distinct_hash("p2"),
+    )
+    sel = photo_select.select([right, left], today=TODAY)
+    assert len(sel.slides) == 1
+    assert sel.slides[0].kind == "pair"
+    assert sel.slides[0].names == ("trip/p1.jpg", "trip/p2.jpg")
+
+
+def test_candidates_from_cache_maps_fields_preserves_order_and_parses_strings():
+    entries = [
+        SimpleNamespace(
+            rel_path="2026/02/b.jpg",
+            width=4032,
+            height=3024,
+            captured_at="2026-02-14T09:30:00",
+            luma=112.5,
+            sharpness=245.0,
+            dhash="18446744073709551615",
+        ),
+        SimpleNamespace(
+            rel_path="2026/01/a.jpg",
+            width=1920,
+            height=1200,
+            captured_at=datetime(2026, 1, 5, 18, 0, 0),
+            luma=98.0,
+            sharpness=180.25,
+            dhash=42,
+        ),
+        SimpleNamespace(
+            rel_path="undated/c.jpg",
+            width=1280,
+            height=960,
+            captured_at=None,
+            luma=140.0,
+            sharpness=75.5,
+            dhash="0",
+        ),
+    ]
+
+    result = photo_select.candidates_from_cache(entries)
+    assert [cand.rel_path for cand in result] == ["2026/02/b.jpg", "2026/01/a.jpg", "undated/c.jpg"]
+    assert result[0] == photo_select.Candidate(
+        rel_path="2026/02/b.jpg",
+        width=4032,
+        height=3024,
+        captured_at=datetime(2026, 2, 14, 9, 30, 0),
+        luma=112.5,
+        sharpness=245.0,
+        dhash=18446744073709551615,
+    )
+    assert result[1].captured_at == datetime(2026, 1, 5, 18, 0, 0)
+    assert result[1].dhash == 42
+    assert result[2].captured_at is None
+    assert result[2].dhash == 0
+
+
+def test_candidates_from_cache_missing_dhash_raises_type_error():
+    dict_entry = {
+        "rel_path": "2026/11/missing_hash.jpg",
+        "width": 1920,
+        "height": 1200,
+        "captured_at": None,
+        "luma": 120.0,
+        "sharpness": 90.0,
+    }
+    with pytest.raises(TypeError) as exc_info:
+        photo_select.candidates_from_cache([dict_entry])
+    msg = str(exc_info.value)
+    assert "dhash" in msg
+    assert "2026/11/missing_hash.jpg" in msg
+
+    obj_entry = SimpleNamespace(
+        rel_path="2026/11/missing_sharp.jpg",
+        width=1920,
+        height=1200,
+        captured_at=None,
+        luma=120.0,
+        dhash=1,
+    )
+    with pytest.raises(TypeError) as obj_exc:
+        photo_select.candidates_from_cache([obj_entry])
+    assert "sharpness" in str(obj_exc.value)
+    assert "2026/11/missing_sharp.jpg" in str(obj_exc.value)

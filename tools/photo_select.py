@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import calendar
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 import math
 from pathlib import PurePosixPath
 import random
-from typing import Literal
+from typing import Any, Literal
 
 from PIL import Image, ImageFilter, ImageStat
 
@@ -24,6 +24,7 @@ CLUSTER_MAX_GAP_SECONDS = 90    # EXIF capture times within this are one moment
 PAIR_ASPECT_TOLERANCE = 0.15    # diptych halves must have similar aspect or the pair looks ragged
 PAIR_MAX_DAY_GAP = 3            # a pair may span days, but only days inside one event
 SINGLE_MAX_ASPECT = 2.2         # landscapes wider than this need backdrop treatment rather than full-bleed
+COVER_MIN_LONG_SIDE = 1920      # a cover fill of 1920x1200 needs this many pixels on the long side
 DAY_CEILING = 12                # the capture day is the event unit (owner decision, 2026-11-18)
 MONTH_SHARE_CEILING = 0.25      # of the deck; insurance for a growing library, inert today
 SLIDE_CAP = 300
@@ -34,6 +35,7 @@ ON_THIS_MONTH_SIGMA_DAYS = 10.0
 
 _SCREENSHOT_EXTENSIONS = (".png", ".webp")
 _DAY_ORDER_BUCKETS = 5
+_MISSING = object()
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,61 @@ class Candidate:
     @property
     def aspect(self) -> float:
         return self.width / self.height
+
+
+def _read_cache_field(entry: Any, field: str, rel_path: str | None = None) -> Any:
+    if isinstance(entry, Mapping):
+        value = entry.get(field, _MISSING)
+    else:
+        value = getattr(entry, field, _MISSING)
+    if value is _MISSING:
+        label = rel_path if rel_path is not None else "<unknown>"
+        raise TypeError(f"cache entry {label!r} is missing required field {field!r}")
+    return value
+
+
+def _parse_captured_at(raw: Any, rel_path: str) -> datetime | None:
+    if raw is None or isinstance(raw, datetime):
+        return raw
+    if isinstance(raw, str):
+        return datetime.fromisoformat(raw)
+    raise TypeError(f"cache entry {rel_path!r} has invalid captured_at type: {type(raw).__name__}")
+
+
+def _parse_dhash(raw: Any, rel_path: str) -> int:
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return int(raw, 10)
+    raise TypeError(f"cache entry {rel_path!r} has invalid dhash type: {type(raw).__name__}")
+
+
+def candidates_from_cache(entries: Iterable[Any]) -> list[Candidate]:
+    """Adapt duck-typed cache entries (or manifest dicts) into Candidate objects in input order."""
+    candidates: list[Candidate] = []
+    for entry in entries:
+        rel_path = _read_cache_field(entry, "rel_path")
+        if not isinstance(rel_path, str):
+            raise TypeError(f"cache entry rel_path must be str, got {type(rel_path).__name__}")
+        width = _read_cache_field(entry, "width", rel_path)
+        height = _read_cache_field(entry, "height", rel_path)
+        raw_captured_at = _read_cache_field(entry, "captured_at", rel_path)
+        luma = _read_cache_field(entry, "luma", rel_path)
+        sharpness_val = _read_cache_field(entry, "sharpness", rel_path)
+        raw_dhash = _read_cache_field(entry, "dhash", rel_path)
+
+        candidates.append(
+            Candidate(
+                rel_path=rel_path,
+                width=int(width),
+                height=int(height),
+                captured_at=_parse_captured_at(raw_captured_at, rel_path),
+                luma=float(luma),
+                sharpness=float(sharpness_val),
+                dhash=_parse_dhash(raw_dhash, rel_path),
+            )
+        )
+    return candidates
 
 
 RejectReason = Literal["too_small", "aspect", "screenshot"]
@@ -76,6 +133,23 @@ class Selection:
     rejected: Mapping[str, int]
     days_covered: int
     days_total: int
+
+
+def needs_backdrop(width: int, height: int) -> bool:
+    """Return True when a photo must use backdrop treatment instead of cover().
+
+    Two conditions trigger backdrop treatment:
+    1. ``max(width, height) < COVER_MIN_LONG_SIDE``: ``photo_format.cover()`` silently
+       upscales any image shorter than 1920 px on its long side to fill the 1920x1200
+       canvas (measured on the live library: 13 of 435 originals are shorter than 1920 px,
+       8 are rejected by ``ADMIT_MIN_LONG_SIDE = 1200``, and 2 admitted photos need routing
+       away from cover).
+    2. ``width / height > SINGLE_MAX_ASPECT``: wide panoramas lose too much content under
+       a 16:10 cover crop.
+    """
+    if width <= 0 or height <= 0:
+        raise ValueError("width and height must be positive")
+    return max(width, height) < COVER_MIN_LONG_SIDE or (width / height) > SINGLE_MAX_ASPECT
 
 
 def admission_reject(candidate: Candidate) -> RejectReason | None:
@@ -282,7 +356,9 @@ def _build_slides(
         if idx in used:
             continue
         if cand.aspect >= 1.0:
-            kind: Literal["single", "backdrop"] = "single" if cand.aspect <= SINGLE_MAX_ASPECT else "backdrop"
+            kind: Literal["single", "backdrop"] = (
+                "backdrop" if needs_backdrop(cand.width, cand.height) else "single"
+            )
             slides.append(
                 Slide(
                     key=cand.rel_path,
