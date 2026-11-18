@@ -3,10 +3,13 @@
 Behaviour is tested through --dry-run, which must plan the work without
 touching the system, and must be deterministic so two runs can be diffed.
 """
+import getpass
+import importlib.util
 import os
 import pathlib
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -101,3 +104,139 @@ def test_shellcheck_clean_when_available(repo_root):
     proc = subprocess.run(["shellcheck", "-S", "warning", str(script_path(repo_root))],
                           capture_output=True, text=True)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+PHOTO_SYNC_SOURCES = (
+    ("sync_photos.py", "sync-photos.py"),
+    ("photo_select.py", "photo_select.py"),
+    ("photo_format.py", "photo_format.py"),
+    ("photo_cache.py", "photo_cache.py"),
+)
+
+
+def _stage_and_run_installer(repo_root, tmp_path, *, missing_module=None, temp_home=None):
+    staged = tmp_path / "repo"
+    if not staged.exists():
+        (staged / "provision").mkdir(parents=True)
+        shutil.copytree(repo_root / "kiosk", staged / "kiosk")
+        shutil.copytree(repo_root / "tools", staged / "tools")
+
+        model_file = tmp_path / "pi-model"
+        model_file.write_text("Raspberry Pi 5 Model B\n")
+        systemd_dir = tmp_path / "systemd"
+        systemd_dir.mkdir()
+
+        script_text = script_path(repo_root).read_text()
+        patched = (
+            script_text
+            .replace('"${EUID}" -ne 0', "0 -ne 0")
+            .replace("/proc/device-tree/model", str(model_file))
+            .replace("/etc/systemd/system", str(systemd_dir))
+        )
+        staged_script = staged / SCRIPT
+        staged_script.write_text(patched)
+        staged_script.chmod(0o755)
+
+    if missing_module is not None:
+        (staged / "tools" / missing_module).unlink()
+
+    if temp_home is None:
+        temp_home = tmp_path / "home"
+        temp_home.mkdir()
+
+    venv_py = temp_home / ".local" / "venvs" / "photoswitch" / "bin" / "python"
+    venv_py.parent.mkdir(parents=True, exist_ok=True)
+    venv_py.write_text("#!/bin/sh\nexit 0\n")
+    venv_py.chmod(0o755)
+
+    shims = tmp_path / "shims"
+    shims.mkdir(exist_ok=True)
+    for cmd in ("dpkg", "apt-get", "raspi-config", "loginctl", "systemctl"):
+        shim = shims / cmd
+        shim.write_text("#!/bin/sh\nexit 0\n")
+        shim.chmod(0o755)
+    crontab_shim = shims / "crontab"
+    crontab_shim.write_text('#!/bin/sh\nfor a in "$@"; do [ "$a" = "-l" ] && exit 0; done\ncat >/dev/null\n')
+    crontab_shim.chmod(0o755)
+
+    user = getpass.getuser()
+    env = dict(
+        os.environ,
+        HOME=str(temp_home),
+        KIOSK_USER=user,
+        KIOSK_HOME=str(temp_home),
+        PATH=f"{shims}:{os.environ['PATH']}",
+    )
+    proc = subprocess.run(
+        ["/bin/bash", str(staged / SCRIPT)],
+        capture_output=True, text=True, timeout=60, cwd=str(staged), env=env,
+    )
+    return proc, temp_home
+
+
+def test_photo_sync_modules_referenced_and_targeted_to_bin_dir(repo_root):
+    body = script_path(repo_root).read_text()
+    for src, _dest in PHOTO_SYNC_SOURCES:
+        assert src in body, f"{src} missing from {SCRIPT}"
+    assert 'SYNC_PHOTOS_DEST="${BIN_DIR}/sync-photos.py"' in body
+    assert '"${BIN_DIR}/${mod}"' in body
+    dry = run_dry(repo_root)
+    assert dry.returncode == 0, dry.stderr
+    for _src, dest in PHOTO_SYNC_SOURCES:
+        assert dest in dry.stdout, f"{dest} missing from --dry-run output"
+
+
+def test_install_ships_all_four_modules_and_they_import_as_a_set(repo_root, tmp_path):
+    proc, temp_home = _stage_and_run_installer(repo_root, tmp_path)
+    assert proc.returncode == 0, proc.stderr
+
+    bin_dir = temp_home / ".local" / "bin"
+    before_stats = {}
+    for src, dest in PHOTO_SYNC_SOURCES:
+        installed = bin_dir / dest
+        assert installed.is_file(), f"missing installed {dest} in {bin_dir}"
+        assert installed.read_text() == (repo_root / "tools" / src).read_text()
+        before_stats[dest] = (installed.stat().st_ino, installed.stat().st_mtime_ns)
+
+    # Second run skips unchanged files via cmp -s.
+    proc2, _ = _stage_and_run_installer(repo_root, tmp_path, temp_home=temp_home)
+    assert proc2.returncode == 0, proc2.stderr
+    for _src, dest in PHOTO_SYNC_SOURCES:
+        installed = bin_dir / dest
+        assert (installed.stat().st_ino, installed.stat().st_mtime_ns) == before_stats[dest]
+
+    if importlib.util.find_spec("PIL") is None or importlib.util.find_spec("requests") is None:
+        pytest.skip("Pillow and requests are required to import installed photo sync modules")
+
+    import_check = (
+        "import importlib.util, pathlib, sys; "
+        f"bin_dir = pathlib.Path({str(bin_dir)!r}); "
+        "sys.path.insert(0, str(bin_dir)); "
+        "import photo_cache, photo_format, photo_select; "
+        "spec = importlib.util.spec_from_file_location('sync_photos', bin_dir / 'sync-photos.py'); "
+        "mod = importlib.util.module_from_spec(spec); "
+        "sys.modules['sync_photos'] = mod; "
+        "spec.loader.exec_module(mod); "
+        "assert pathlib.Path(mod.photo_cache.__file__).resolve().parent == bin_dir.resolve(); "
+        "assert pathlib.Path(mod.photo_format.__file__).resolve().parent == bin_dir.resolve(); "
+        "assert pathlib.Path(mod.photo_select.__file__).resolve().parent == bin_dir.resolve()"
+    )
+    imp = subprocess.run(
+        [sys.executable, "-c", import_check],
+        capture_output=True, text=True, timeout=30, cwd=str(tmp_path),
+    )
+    assert imp.returncode == 0, imp.stderr
+
+    cli = subprocess.run(
+        [sys.executable, str(bin_dir / "sync-photos.py"), "--help"],
+        capture_output=True, text=True, timeout=30, cwd=str(tmp_path),
+    )
+    assert cli.returncode == 0, cli.stderr
+
+
+@pytest.mark.parametrize("missing_module", [src for src, _ in PHOTO_SYNC_SOURCES])
+def test_missing_photo_sync_module_fails_loudly(repo_root, tmp_path, missing_module):
+    proc, temp_home = _stage_and_run_installer(repo_root, tmp_path, missing_module=missing_module)
+    assert proc.returncode != 0
+    assert missing_module in (proc.stderr + proc.stdout)
+    assert not (temp_home / ".local" / "bin" / "sync-photos.py").exists()

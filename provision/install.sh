@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 KIOSK_USER="${KIOSK_USER:-kiosk}"
-KIOSK_HOME="/home/${KIOSK_USER}"
+KIOSK_HOME="${KIOSK_HOME:-/home/${KIOSK_USER}}"
 CONFIG_DIR="${KIOSK_HOME}/.config/kitchen-display"
 DATA_DIR="${KIOSK_HOME}/.local/share/kitchen-display"
 SOLAR_PLACEHOLDER="${DATA_DIR}/solar.html"
@@ -56,7 +56,7 @@ print_plan() {
 [plan] 6. Install systemd user units kitchen-display.service (${USER_UNIT_DEST}) and kitchen-display-http.service (${HTTP_UNIT_DEST}) and enable linger
 [plan] 7. Install labwc autostart entry to ${AUTOSTART_DEST}
 [plan] 8. Install and enable nightly 03:00 reboot timer (${REBOOT_TIMER})
-[plan] 9. Install photo-frame scripts (${SYNC_PHOTOS_DEST}, ${PHOTO_SWITCH_DEST}), page (${PHOTO_HTML_DEST}), dirs (${PHOTOS_DIR}, ${STATE_DIR}), and venv (${PHOTOSWITCH_VENV} with websockets)
+[plan] 9. Install photo-frame scripts (${SYNC_PHOTOS_DEST}, ${BIN_DIR}/photo_select.py, ${BIN_DIR}/photo_format.py, ${BIN_DIR}/photo_cache.py, ${PHOTO_SWITCH_DEST}), page (${PHOTO_HTML_DEST}), dirs (${PHOTOS_DIR}, ${STATE_DIR}), and venv (${PHOTOSWITCH_VENV} with websockets)
 [plan] 10. Add user cron entry for ${KIOSK_USER}: ${CRON_LINE}
 EOF
 }
@@ -216,11 +216,20 @@ systemctl daemon-reload
 systemctl enable --now kitchen-display-reboot.timer
 
 # 9. Install photo-frame scripts, page, data/state dirs, and photoswitch venv.
+for mod in sync_photos.py photo_select.py photo_format.py photo_cache.py; do
+    [[ -f "${REPO_ROOT}/tools/${mod}" ]] || { echo "Error: missing photo-sync module ${REPO_ROOT}/tools/${mod}" >&2; exit 1; }
+done
 install -d -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" "${BIN_DIR}" "${PHOTOS_DIR}" "${STATE_DIR}" "${VENVS_DIR}"
 if [[ ! -f "${SYNC_PHOTOS_DEST}" ]] || ! cmp -s "${REPO_ROOT}/tools/sync_photos.py" "${SYNC_PHOTOS_DEST}"; then
     install -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
         "${REPO_ROOT}/tools/sync_photos.py" "${SYNC_PHOTOS_DEST}"
 fi
+for mod in photo_select.py photo_format.py photo_cache.py; do
+    if [[ ! -f "${BIN_DIR}/${mod}" ]] || ! cmp -s "${REPO_ROOT}/tools/${mod}" "${BIN_DIR}/${mod}"; then
+        install -m 0644 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
+            "${REPO_ROOT}/tools/${mod}" "${BIN_DIR}/${mod}"
+    fi
+done
 if [[ ! -f "${PHOTO_SWITCH_DEST}" ]] || ! cmp -s "${REPO_ROOT}/tools/photo_switch.py" "${PHOTO_SWITCH_DEST}"; then
     install -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
         "${REPO_ROOT}/tools/photo_switch.py" "${PHOTO_SWITCH_DEST}"
