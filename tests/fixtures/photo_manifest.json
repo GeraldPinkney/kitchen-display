@@ -1,0 +1,17 @@
+{
+  "count": 2,
+  "generated_at": "2026-11-18T10:00:00+00:00",
+  "origin": "cloud.example.test",
+  "items": [
+    {
+      "name": "0123456789-garden.jpg",
+      "w": 1600,
+      "h": 1200
+    },
+    {
+      "name": "abcdef0123-kitchen.jpg",
+      "w": 1920,
+      "h": 1080
+    }
+  ]
+}

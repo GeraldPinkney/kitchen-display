@@ -10,6 +10,15 @@ KIOSK_HOME="/home/${KIOSK_USER}"
 CONFIG_DIR="${KIOSK_HOME}/.config/kitchen-display"
 DATA_DIR="${KIOSK_HOME}/.local/share/kitchen-display"
 SOLAR_PLACEHOLDER="${DATA_DIR}/solar.html"
+BIN_DIR="${KIOSK_HOME}/.local/bin"
+SYNC_PHOTOS_DEST="${BIN_DIR}/sync-photos.py"
+PHOTO_SWITCH_DEST="${BIN_DIR}/photo-switch"
+PHOTOS_DIR="${DATA_DIR}/photos"
+PHOTO_HTML_DEST="${DATA_DIR}/photo.html"
+STATE_DIR="${KIOSK_HOME}/.local/state/kitchen-display"
+VENVS_DIR="${KIOSK_HOME}/.local/venvs"
+PHOTOSWITCH_VENV="${VENVS_DIR}/photoswitch"
+CRON_LINE='*/30 * * * * $HOME/.local/bin/sync-photos.py >> $HOME/.local/state/kitchen-display/photo-sync.log 2>&1'
 ENV_FILE="${CONFIG_DIR}/env"
 URL_FILE="${CONFIG_DIR}/url"
 LAUNCHER_DEST="${CONFIG_DIR}/launch_kiosk.sh"
@@ -47,6 +56,8 @@ print_plan() {
 [plan] 6. Install systemd user units kitchen-display.service (${USER_UNIT_DEST}) and kitchen-display-http.service (${HTTP_UNIT_DEST}) and enable linger
 [plan] 7. Install labwc autostart entry to ${AUTOSTART_DEST}
 [plan] 8. Install and enable nightly 03:00 reboot timer (${REBOOT_TIMER})
+[plan] 9. Install photo-frame scripts (${SYNC_PHOTOS_DEST}, ${PHOTO_SWITCH_DEST}), page (${PHOTO_HTML_DEST}), dirs (${PHOTOS_DIR}, ${STATE_DIR}), and venv (${PHOTOSWITCH_VENV} with websockets)
+[plan] 10. Add user cron entry for ${KIOSK_USER}: ${CRON_LINE}
 EOF
 }
 
@@ -203,3 +214,37 @@ fi
 
 systemctl daemon-reload
 systemctl enable --now kitchen-display-reboot.timer
+
+# 9. Install photo-frame scripts, page, data/state dirs, and photoswitch venv.
+install -d -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" "${BIN_DIR}" "${PHOTOS_DIR}" "${STATE_DIR}" "${VENVS_DIR}"
+if [[ ! -f "${SYNC_PHOTOS_DEST}" ]] || ! cmp -s "${REPO_ROOT}/tools/sync_photos.py" "${SYNC_PHOTOS_DEST}"; then
+    install -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
+        "${REPO_ROOT}/tools/sync_photos.py" "${SYNC_PHOTOS_DEST}"
+fi
+if [[ ! -f "${PHOTO_SWITCH_DEST}" ]] || ! cmp -s "${REPO_ROOT}/tools/photo_switch.py" "${PHOTO_SWITCH_DEST}"; then
+    install -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
+        "${REPO_ROOT}/tools/photo_switch.py" "${PHOTO_SWITCH_DEST}"
+fi
+if [[ ! -f "${PHOTO_HTML_DEST}" ]] || ! cmp -s "${REPO_ROOT}/kiosk/photo.html" "${PHOTO_HTML_DEST}"; then
+    install -m 0644 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
+        "${REPO_ROOT}/kiosk/photo.html" "${PHOTO_HTML_DEST}"
+fi
+
+if [[ ! -x "${PHOTOSWITCH_VENV}/bin/python" ]] || ! "${PHOTOSWITCH_VENV}/bin/python" -c "import websockets" >/dev/null 2>&1; then
+    if [[ ! -x "${PHOTOSWITCH_VENV}/bin/python" ]]; then
+        python3 -m venv "${PHOTOSWITCH_VENV}"
+    fi
+    "${PHOTOSWITCH_VENV}/bin/pip" install --quiet websockets
+    chown -R "${KIOSK_USER}:${KIOSK_GROUP}" "${PHOTOSWITCH_VENV}"
+fi
+
+# 10. Install user cron entry once for periodic photo sync.
+EXISTING_CRON="$(crontab -u "${KIOSK_USER}" -l 2>/dev/null || true)"
+if ! printf '%s\n' "${EXISTING_CRON}" | grep -Fq 'sync-photos.py'; then
+    {
+        if [[ -n "${EXISTING_CRON}" ]]; then
+            printf '%s\n' "${EXISTING_CRON}"
+        fi
+        printf '%s\n' "${CRON_LINE}"
+    } | crontab -u "${KIOSK_USER}" -
+fi

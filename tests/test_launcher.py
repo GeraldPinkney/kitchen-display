@@ -103,3 +103,12 @@ def test_default_scale_factor_is_1_5_for_10_inch_panel(repo_root, tmp_path):
 def test_kiosk_scale_env_overrides_default_scale_factor(repo_root, tmp_path):
     args = run_launcher(repo_root, tmp_path, extra_env={"KIOSK_SCALE": "1.25"})
     assert "--force-device-scale-factor=1.25" in args, args
+
+
+def test_launcher_enables_loopback_cdp_flags_before_url(repo_root, tmp_path):
+    args = run_launcher(repo_root, tmp_path)
+    assert args.count("--remote-debugging-port=9222") == 1, args
+    assert args.count("--remote-allow-origins=http://127.0.0.1") == 1, args
+    url_idx = len(args) - 1
+    assert args.index("--remote-debugging-port=9222") < url_idx
+    assert args.index("--remote-allow-origins=http://127.0.0.1") < url_idx

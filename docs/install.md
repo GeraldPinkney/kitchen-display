@@ -71,6 +71,28 @@ Run on `kitchen-display` over SSH:
    ```
    Confirm `http://192.168.178.84/kitchen-display/home?kiosk` loads on the display (including `Home`, `Energy` with East/West Forecast.Solar planes, and `Solar` panel webpage card at `:8788/solar.html`) and recovers automatically after `sudo reboot`.
 
+## 6. Verify the Photo Frame
+
+Run on `kitchen-display` over SSH after configuring Nextcloud credentials (`NEXTCLOUD_PHOTO_URL`, `NEXTCLOUD_PHOTO_USER`, `NEXTCLOUD_PHOTO_APP_PASSWORD`) and running an initial sync:
+
+1. **User services active**:
+   ```bash
+   systemctl --user is-active kitchen-display.service kitchen-display-http.service
+   ```
+   Both must print `active`.
+2. **CDP bound to loopback only**:
+   ```bash
+   ss -ltnp | grep 9222
+   ```
+   Confirm Chromium is listening on `127.0.0.1:9222` (never `0.0.0.0`).
+3. **Trigger and capture the photo frame**:
+   ```bash
+   photo-switch show
+   WAYLAND_DISPLAY=wayland-0 grim /tmp/photo-frame.png
+   photo-switch hide
+   ```
+   Confirm `/tmp/photo-frame.png` shows the full-bleed photo slideshow (`:8788/photo.html`) and `photo-switch hide` returns to the Home Assistant dashboard.
+
 ## Network
 
 WiFi is the design, not a fallback: `eth0` reports `NO-CARRIER` and stays unwired. Do not "fix" it by cabling the panel — the kiosk, the `:8788` HTTP server and the dashboard all resolve over WiFi, and the publish path (`scp` from the host) uses the same address.

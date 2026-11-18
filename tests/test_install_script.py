@@ -39,8 +39,19 @@ def test_dry_run_succeeds_and_plans_every_component(repo_root):
     out = (proc.stdout + proc.stderr).lower()
     for needle in ("apt", "chromium", "swayidle", "wlopm", "kanshi",
                    "kitchen-display.service", "kitchen-display-http.service",
-                   ".local/share/kitchen-display", "autostart", "reboot"):
+                   ".local/share/kitchen-display", "autostart", "reboot",
+                   "sync-photos.py", "photo-switch", "photo.html",
+                   "photoswitch", "websockets", "*/30"):
         assert needle in out, f"dry-run output does not mention {needle}:\n{proc.stdout}"
+
+
+def test_install_has_no_sudo_and_ships_photo_frame_cron_idempotently(repo_root):
+    body = script_path(repo_root).read_text()
+    assert "sudo " not in body
+    assert '*/30 * * * * $HOME/.local/bin/sync-photos.py >> $HOME/.local/state/kitchen-display/photo-sync.log 2>&1' in body
+    assert ".local/state/kitchen-display" in body
+    assert ".local/share/kitchen-display" in body
+    assert ".local/venvs" in body
 
 
 def test_dry_run_honours_kiosk_user_override(repo_root):

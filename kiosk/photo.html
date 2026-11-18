@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kitchen Display Photos</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      cursor: none !important;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    .slide {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      background: #000;
+      opacity: 0;
+      transition: opacity 0.8s ease-in-out;
+      pointer-events: none;
+      user-select: none;
+    }
+    .slide.active {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <img id="layer-a" class="slide" alt="">
+  <img id="layer-b" class="slide" alt="">
+  <script>
+    (() => {
+      "use strict";
+
+      const DEFAULT_RETURN_URL = "http://192.168.178.84/kitchen-display/home?kiosk";
+      const MANIFEST_PATH = "photos/manifest.json";
+      const SLIDE_INTERVAL_MS = 10000;
+
+      function getReturnUrl() {
+        try {
+          const raw = new URLSearchParams(window.location.search).get("return");
+          if (raw) {
+            const parsed = new URL(raw);
+            if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+              return parsed.toString();
+            }
+          }
+        } catch (_) {
+          // Fall through to default dashboard URL.
+        }
+        return DEFAULT_RETURN_URL;
+      }
+
+      function fallbackToDashboard() {
+        window.location.replace(getReturnUrl());
+      }
+
+      function shuffle(list) {
+        for (let i = list.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const tmp = list[i];
+          list[i] = list[j];
+          list[j] = tmp;
+        }
+        return list;
+      }
+
+      function preload(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => {
+            if (typeof img.decode === "function") {
+              img.decode().then(() => resolve(src), () => resolve(src));
+            } else {
+              resolve(src);
+            }
+          };
+          img.onerror = () => reject(new Error("failed to load " + src));
+          img.src = src;
+        });
+      }
+
+      async function start() {
+        let data;
+        try {
+          const resp = await fetch(MANIFEST_PATH, { cache: "no-store" });
+          if (!resp.ok) {
+            fallbackToDashboard();
+            return;
+          }
+          data = await resp.json();
+        } catch (_) {
+          fallbackToDashboard();
+          return;
+        }
+
+        if (!data || Number(data.count) === 0 || !Array.isArray(data.items) || data.items.length === 0) {
+          fallbackToDashboard();
+          return;
+        }
+
+        const items = shuffle(
+          data.items.filter((item) => item && typeof item.name === "string" && item.name.length > 0)
+        );
+        if (items.length === 0) {
+          fallbackToDashboard();
+          return;
+        }
+
+        const layers = [
+          document.getElementById("layer-a"),
+          document.getElementById("layer-b"),
+        ];
+        let activeLayer = 1;
+        let index = 0;
+
+        async function advance() {
+          for (let attempts = 0; attempts < items.length; attempts += 1) {
+            const item = items[index];
+            index = (index + 1) % items.length;
+            const src = "photos/" + encodeURIComponent(item.name);
+            try {
+              await preload(src);
+              const nextLayer = 1 - activeLayer;
+              layers[nextLayer].src = src;
+              layers[nextLayer].classList.add("active");
+              layers[activeLayer].classList.remove("active");
+              activeLayer = nextLayer;
+              window.setTimeout(advance, SLIDE_INTERVAL_MS);
+              return;
+            } catch (_) {
+              // Skip broken or missing photo and try the next item immediately.
+            }
+          }
+          fallbackToDashboard();
+        }
+
+        advance();
+      }
+
+      start();
+    })();
+  </script>
+</body>
+</html>

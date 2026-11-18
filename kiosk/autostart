@@ -12,4 +12,7 @@ systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESS
 (systemctl --user start kitchen-display-http.service) &
 (systemctl --user start kitchen-display.service) &
 (pgrep -x kanshi >/dev/null || kanshi) &
-swayidle -w timeout 600 'wlopm --off HDMI-A-1' resume 'wlopm --on HDMI-A-1' &
+swayidle -w \
+    timeout 300  'timeout 5 photo-switch show' \
+    timeout 3600 'wlopm --off HDMI-A-1' \
+    resume 'photo-switch hide; wlopm --on HDMI-A-1' &
