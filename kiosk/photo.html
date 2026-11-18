@@ -25,7 +25,7 @@
       object-fit: contain;
       background: #000;
       opacity: 0;
-      transition: opacity 0.8s ease-in-out;
+      transition: opacity 1200ms ease-in-out;
       pointer-events: none;
       user-select: none;
     }
@@ -43,6 +43,7 @@
 
       const DEFAULT_RETURN_URL = "http://192.168.178.84/kitchen-display/home?kiosk";
       const MANIFEST_PATH = "photos/manifest.json";
+      const STORAGE_KEY = "kd-photo-index";
       // 30 s per photo: with 300 photos that is a ~2.5 h cycle, so a photo returns
       // about once a day at the panel's idle rate (#17).
       const SLIDE_INTERVAL_MS = 30000;
@@ -84,14 +85,27 @@
         window.location.replace(getReturnUrl());
       }
 
-      function shuffle(list) {
-        for (let i = list.length - 1; i > 0; i -= 1) {
-          const j = Math.floor(Math.random() * (i + 1));
-          const tmp = list[i];
-          list[i] = list[j];
-          list[j] = tmp;
+      function readSavedIndex() {
+        try {
+          const raw = window.localStorage.getItem(STORAGE_KEY);
+          if (raw !== null && /^\d+$/.test(raw)) {
+            const parsed = Number.parseInt(raw, 10);
+            if (Number.isSafeInteger(parsed) && parsed >= 0) {
+              return parsed;
+            }
+          }
+        } catch (_) {
+          // Ignore storage access errors in private or restricted modes.
         }
-        return list;
+        return 0;
+      }
+
+      function writeSavedIndex(value) {
+        try {
+          window.localStorage.setItem(STORAGE_KEY, String(value));
+        } catch (_) {
+          // Ignore storage access errors in private or restricted modes.
+        }
       }
 
       function preload(src) {
@@ -128,8 +142,8 @@
           return;
         }
 
-        const items = shuffle(
-          data.items.filter((item) => item && typeof item.name === "string" && item.name.length > 0)
+        const items = data.items.filter(
+          (item) => item && typeof item.name === "string" && item.name.length > 0
         );
         if (items.length === 0) {
           fallbackToDashboard();
@@ -141,7 +155,7 @@
           document.getElementById("layer-b"),
         ];
         let activeLayer = 1;
-        let index = 0;
+        let index = readSavedIndex() % items.length;
 
         async function advance() {
           for (let attempts = 0; attempts < items.length; attempts += 1) {
@@ -155,6 +169,7 @@
               layers[nextLayer].classList.add("active");
               layers[activeLayer].classList.remove("active");
               activeLayer = nextLayer;
+              writeSavedIndex(index);
               window.setTimeout(advance, SLIDE_INTERVAL_MS);
               return;
             } catch (_) {

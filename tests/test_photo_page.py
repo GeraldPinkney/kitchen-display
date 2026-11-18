@@ -53,10 +53,14 @@ def test_photo_page_styling_is_full_bleed_black_contain_no_cursor(repo_root):
     assert "background: #000" in body
     assert "object-fit: contain" in body
     assert "cursor: none" in body
-    assert "opacity" in body and "transition" in body
+    transition_match = re.search(r"transition:\s*([^;]+);", body)
+    assert transition_match is not None
+    assert "opacity" in transition_match.group(1)
+    assert "1200" in transition_match.group(1)
+    assert "0.8s" not in body
 
 
-def test_photo_page_logic_covers_manifest_shuffle_preload_error_skip_and_fallback(repo_root):
+def test_photo_page_logic_covers_manifest_order_preload_error_skip_and_fallback(repo_root):
     body = (repo_root / "kiosk" / "photo.html").read_text(encoding="utf-8")
     assert "photos/manifest.json" in body
     assert "location.replace" in body
@@ -64,8 +68,26 @@ def test_photo_page_logic_covers_manifest_shuffle_preload_error_skip_and_fallbac
     assert "30000" in body
     assert "new Image()" in body
     assert "onerror" in body
-    assert "Math.random()" in body
+    assert "Math.random()" not in body
+    assert "items[index]" in body
     assert "% items.length" in body
+
+
+def test_photo_page_persists_and_resumes_index_via_local_storage(repo_root):
+    body = (repo_root / "kiosk" / "photo.html").read_text(encoding="utf-8")
+    assert "localStorage" in body
+    assert '"kd-photo-index"' in body
+    assert re.search(
+        r"try\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*localStorage\.getItem\([^)]*\)(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}\s*catch",
+        body,
+        re.DOTALL,
+    )
+    assert re.search(
+        r"try\s*\{[^{}]*localStorage\.setItem\([^)]*\)[^{}]*\}\s*catch",
+        body,
+        re.DOTALL,
+    )
+    assert re.search(r"let\s+index\s*=\s*[^;]*%\s*items\.length\s*;", body)
 
 
 def test_photo_page_returns_to_the_dashboard_on_first_touch(repo_root):
