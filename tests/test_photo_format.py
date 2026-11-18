@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from datetime import datetime
 import random
-import re
 
 from PIL import Image, ImageDraw, ImageStat
 import pytest
@@ -210,14 +209,39 @@ def test_render_slide_pair_draws_caption_once():
     assert ImageStat.Stat(right_half_same_spot).extrema[0][1] == 0
 
 
-def test_output_name_single_backdrop_and_pair():
-    assert photo_format.output_name("single", ["2026/09/IMG_1234.HEIC"]) == "IMG_1234.jpg"
-    assert photo_format.output_name("backdrop", ["photo.png"]) == "photo.jpg"
+def test_slide_name_single_backdrop_and_pair():
+    assert photo_format.FORMAT_VERSION >= 1
+    assert not hasattr(photo_format, "output_name")
 
-    pair_ab = photo_format.output_name("pair", ["2026/09/a.jpg", "2026/09/b.jpg"])
-    pair_ba = photo_format.output_name("pair", ["2026/09/b.jpg", "2026/09/a.jpg"])
-    assert pair_ab == pair_ba
-    assert re.match(r"^pair-[0-9a-f]{12}-[0-9a-f]{12}\.jpg$", pair_ab)
+    assert photo_format.slide_name("single", ["0123456789-IMG_1234.jpg"]) == "0123456789-IMG_1234.jpg"
+    assert photo_format.slide_name("backdrop", ["abcdef0123-photo.jpg"]) == "abcdef0123-photo.jpg"
+
+    a = "0123456789-a.jpg"
+    b = "fedcba9876-b.jpg"
+    pair_ab = photo_format.slide_name("pair", [a, b])
+    pair_ba = photo_format.slide_name("pair", [b, a])
+    assert pair_ab == pair_ba == "pair-0123456789-fedcba9876.jpg"
+
+
+def test_slide_name_validation_errors():
+    with pytest.raises(ValueError):
+        photo_format.slide_name("collage", ["0123456789-a.jpg"])
+    with pytest.raises(ValueError):
+        photo_format.slide_name("single", [])
+    with pytest.raises(ValueError):
+        photo_format.slide_name("single", ["0123456789-a.jpg", "fedcba9876-b.jpg"])
+    with pytest.raises(ValueError):
+        photo_format.slide_name("backdrop", [])
+    with pytest.raises(ValueError):
+        photo_format.slide_name("backdrop", ["0123456789-a.jpg", "fedcba9876-b.jpg"])
+    with pytest.raises(ValueError):
+        photo_format.slide_name("pair", ["0123456789-a.jpg"])
+    with pytest.raises(ValueError):
+        photo_format.slide_name("pair", ["a.jpg", "b.jpg", "c.jpg"])
+    with pytest.raises(ValueError):
+        photo_format.slide_name("single", [""])
+    with pytest.raises(ValueError):
+        photo_format.slide_name("pair", ["0123456789-a.jpg", ""])
 
 
 def test_save_jpeg_format_metadata_and_determinism(tmp_path):

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-import hashlib
 import os
 import pathlib
 from pathlib import PurePosixPath
@@ -12,6 +11,7 @@ from typing import Literal
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
+FORMAT_VERSION = 1
 CANVAS = (1920, 1200)
 DIPTYCH_GUTTER = 8
 DIPTYCH_HALF = 956                  # (1920 - 8) // 2 — 960+8+960 = 1928 is the spec bug this fixes
@@ -228,22 +228,22 @@ def render_slide(
     return draw_caption(canvas, caption_lines(captured_at, rel_path))
 
 
-def output_name(kind: str, rel_paths: Sequence[str]) -> str:
+def slide_name(kind: str, cache_names: Sequence[str]) -> str:
     """Return the deterministic output JPEG filename for a rendered slide."""
     if kind in ("single", "backdrop"):
-        if len(rel_paths) != 1:
-            raise ValueError(f"{kind} output requires 1 rel_path, got {len(rel_paths)}")
-        stem = PurePosixPath(rel_paths[0]).stem
-        if not stem:
-            raise ValueError(f"empty stem for rel_path: {rel_paths[0]!r}")
-        return f"{stem}.jpg"
+        if len(cache_names) != 1:
+            raise ValueError(f"{kind} slide requires 1 cache_name, got {len(cache_names)}")
+        name = cache_names[0]
+        if not name:
+            raise ValueError("cache_name must be non-empty")
+        return name
     if kind == "pair":
-        if len(rel_paths) != 2:
-            raise ValueError(f"pair output requires 2 rel_paths, got {len(rel_paths)}")
-        first, second = sorted(rel_paths)
-        hash_a = hashlib.sha1(first.encode("utf-8")).hexdigest()[:12]
-        hash_b = hashlib.sha1(second.encode("utf-8")).hexdigest()[:12]
-        return f"pair-{hash_a}-{hash_b}.jpg"
+        if len(cache_names) != 2:
+            raise ValueError(f"pair slide requires 2 cache_names, got {len(cache_names)}")
+        if not cache_names[0] or not cache_names[1]:
+            raise ValueError("cache_name must be non-empty")
+        first, second = sorted(cache_names)
+        return f"pair-{first[:10]}-{second[:10]}.jpg"
     raise ValueError(f"unknown slide kind: {kind!r}")
 
 

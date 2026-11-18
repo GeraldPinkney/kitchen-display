@@ -1,33 +1,58 @@
 #!/usr/bin/env python3
-"""Pull and resize photos from Nextcloud WebDAV into the local kiosk mirror."""
+"""Sync Nextcloud WebDAV photos, select slides, render, and publish manifest.json."""
 from __future__ import annotations
 
 import argparse
 from collections import deque
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
+import importlib
+import importlib.util
 import json
 import os
 import pathlib
-import re
 import sys
 import time
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 import xml.etree.ElementTree as ET
 
-from PIL import Image, ImageOps
+from PIL import Image
 import requests
 
 DEFAULT_DEST_DIR = pathlib.Path.home() / ".local" / "share" / "kitchen-display" / "photos"
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
 SKIPPED_LOG_EXTENSION = ".heic"
-MAX_LONG_SIDE = 1920
-MAX_SHORT_SIDE = 1200
-JPEG_QUALITY = 80
 REQUEST_TIMEOUT = (10, 60)
 STALE_TMP_SECONDS = 3600
+MAX_ERROR_FRACTION = 0.20
+RENDER_MANIFEST_NAME = ".render-manifest.json"
+
+
+def _load_sibling(name: str):
+    """Import a sibling tool module, reusing any already-loaded test or package instance."""
+    for modname in (name, f"kd_{name}"):
+        if modname in sys.modules:
+            return sys.modules[modname]
+    try:
+        return importlib.import_module(name)
+    except ModuleNotFoundError:
+        path = pathlib.Path(__file__).resolve().with_name(f"{name}.py")
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+        return mod
+
+
+photo_select = _load_sibling("photo_select")
+sys.modules.setdefault("photo_select", photo_select)
+photo_cache = _load_sibling("photo_cache")
+photo_format = _load_sibling("photo_format")
 
 DAV_NS = "{DAV:}"
 PROPFIND_BODY = (
@@ -95,13 +120,6 @@ def _require_env() -> tuple[str, str, str]:
     user = os.environ["NEXTCLOUD_PHOTO_USER"].strip()
     password = os.environ["NEXTCLOUD_PHOTO_APP_PASSWORD"].strip()
     return url, user, password
-
-
-def _local_filename(rel_path: str) -> str:
-    digest = hashlib.sha1(rel_path.encode("utf-8")).hexdigest()[:10]
-    stem = pathlib.PurePosixPath(rel_path).stem
-    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._") or "photo"
-    return f"{digest}-{safe_stem}.jpg"
 
 
 def _prop_text(prop: ET.Element, tag: str) -> str:
@@ -229,68 +247,6 @@ def list_remote_photos(session: requests.Session, base_url: str) -> tuple[list[R
     return discovered, heic_total
 
 
-def _is_unchanged(photo: RemotePhoto, prev: dict[str, Any] | None, local_path: pathlib.Path, local_name: str) -> bool:
-    if not isinstance(prev, dict):
-        return False
-    if prev.get("local_name") != local_name or not local_path.is_file():
-        return False
-    return (
-        prev.get("etag", "") == photo.etag
-        and prev.get("mtime", "") == photo.mtime
-        and prev.get("size") == photo.size
-    )
-
-
-def _to_rgb(img: Image.Image) -> Image.Image:
-    if img.mode == "RGB":
-        return img
-    if img.mode in ("RGBA", "LA", "PA") or (img.mode == "P" and "transparency" in img.info):
-        rgba = img.convert("RGBA")
-        background = Image.new("RGB", rgba.size, (0, 0, 0))
-        background.paste(rgba, mask=rgba.split()[3])
-        return background
-    return img.convert("RGB")
-
-
-def _resize_and_save_jpeg(src_path: pathlib.Path, dest_path: pathlib.Path) -> tuple[int, int]:
-    tmp_out = dest_path.with_name(f"{dest_path.name}.tmp")
-    try:
-        with Image.open(src_path) as opened:
-            img = ImageOps.exif_transpose(opened)
-            img = _to_rgb(img)
-            img.thumbnail((MAX_LONG_SIDE, MAX_SHORT_SIDE), Image.Resampling.LANCZOS)
-            width, height = img.size
-            img.save(tmp_out, format="JPEG", quality=JPEG_QUALITY, optimize=True)
-        os.replace(tmp_out, dest_path)
-        return width, height
-    finally:
-        if tmp_out.exists():
-            tmp_out.unlink()
-
-
-def _download_and_convert(session: requests.Session, url: str, dest_path: pathlib.Path) -> tuple[int, int]:
-    dl_tmp = dest_path.with_name(f".dl-{dest_path.name}.tmp")
-    try:
-        try:
-            with session.get(url, stream=True, timeout=REQUEST_TIMEOUT) as resp:
-                if resp.status_code != 200:
-                    raise SyncError(f"GET {url} returned HTTP {resp.status_code}")
-                with open(dl_tmp, "wb") as handle:
-                    for chunk in resp.iter_content(chunk_size=65536):
-                        if chunk:
-                            handle.write(chunk)
-        except requests.RequestException as exc:
-            raise SyncError(f"GET {url} failed: {exc}") from exc
-
-        try:
-            return _resize_and_save_jpeg(dl_tmp, dest_path)
-        except Exception as exc:
-            raise SyncError(f"image processing failed for {url}: {exc}") from exc
-    finally:
-        if dl_tmp.exists():
-            dl_tmp.unlink()
-
-
 def _atomic_write_json(path: pathlib.Path, payload: Any) -> None:
     tmp_path = path.with_name(f"{path.name}.tmp")
     try:
@@ -346,6 +302,170 @@ def _prune_dest(dest_dir: pathlib.Path, keep_names: set[str], now: float | None 
     return removed
 
 
+def _load_render_manifest(path: pathlib.Path) -> dict[str, str]:
+    """Load the per-slide render key manifest, returning {} if missing or corrupt."""
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
+
+
+def _render_key(
+    kind: str,
+    names: Sequence[str],
+    etags: Sequence[str],
+    caption_date_iso: str | None,
+) -> str:
+    """Return a deterministic SHA-256 hex digest covering slide format, inputs, and caption date."""
+    payload = json.dumps(
+        [photo_format.FORMAT_VERSION, kind, list(names), list(etags), caption_date_iso],
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _plan_dry_run(
+    sorted_discovered: Sequence[RemotePhoto],
+    prev_cache: Mapping[str, Any],
+    cache_dir: pathlib.Path,
+    heic_count: int,
+    today: date,
+) -> list[str]:
+    """Compute dry-run action lines without touching the network cache or writing files."""
+    actions: list[str] = []
+    expected_cache_names: set[str] = set()
+    all_reusable = True
+
+    for photo in sorted_discovered:
+        expected_cache_names.add(photo_cache.cache_name(photo.rel_path))
+        prev_entry = prev_cache.get(photo.rel_path)
+        if not photo_cache.is_reusable(prev_entry, photo, cache_dir):
+            all_reusable = False
+            verb = "update" if photo.rel_path in prev_cache else "add"
+            actions.append(f"{verb} {photo.rel_path}")
+
+    current_rel_paths = {photo.rel_path for photo in sorted_discovered}
+    for prev_rel, prev_entry in sorted(prev_cache.items()):
+        if prev_rel not in current_rel_paths and prev_entry.local_name not in expected_cache_names:
+            actions.append(f"prune {prev_entry.local_name}")
+
+    if heic_count > 0:
+        actions.append(f"skipped {heic_count} heic file(s)")
+
+    if all_reusable:
+        candidates = photo_select.candidates_from_cache(
+            [prev_cache[photo.rel_path] for photo in sorted_discovered]
+        )
+        selection = photo_select.select(candidates, today=today)
+        actions.append(
+            f"deck: {len(selection.slides)} slide(s) from {len(candidates)} photo(s) "
+            f"({selection.days_covered}/{selection.days_total} day(s))"
+        )
+
+    return actions
+
+
+def _render_slides(
+    dest_dir: pathlib.Path,
+    cache_dir: pathlib.Path,
+    entries: Mapping[str, Any],
+    selection: Any,
+    order: Sequence[str],
+    prev_render_manifest: Mapping[str, str],
+) -> tuple[list[dict[str, Any]], dict[str, str], set[str], list[dict[str, Any]]]:
+    """Render any uncached or changed slides in playlist order and return manifest metadata."""
+    slides_by_key = {slide.key: slide for slide in selection.slides}
+    items: list[dict[str, Any]] = []
+    new_render_manifest: dict[str, str] = {}
+    keep_slides: set[str] = set()
+    render_errors: list[dict[str, Any]] = []
+
+    for day_idx, slide_key in enumerate(order):
+        slide = slides_by_key[slide_key]
+        cache_names = [entries[name].local_name for name in slide.names]
+        etags = [entries[name].etag for name in slide.names]
+        caption_date_iso = slide.captured_at.date().isoformat() if slide.captured_at is not None else None
+        dest_name = photo_format.slide_name(slide.kind, cache_names)
+        dest_path = dest_dir / dest_name
+        key = _render_key(slide.kind, slide.names, etags, caption_date_iso)
+
+        if prev_render_manifest.get(dest_name) != key or not dest_path.is_file():
+            src_paths = [cache_dir / cname for cname in cache_names]
+            opened: list[Image.Image] = []
+            try:
+                for src_path in src_paths:
+                    opened.append(Image.open(src_path))
+                rendered = photo_format.render_slide(
+                    slide.kind,
+                    opened,
+                    slide.captured_at,
+                    slide.names[0],
+                )
+                try:
+                    photo_format.save_jpeg(rendered, dest_path)
+                finally:
+                    rendered.close()
+            except Exception as exc:  # one unreadable slide must never abort the deck
+                render_errors.append({"rel_path": slide.names[0], "error": f"render: {exc}"})
+                continue
+            finally:
+                for im in opened:
+                    im.close()
+
+        new_render_manifest[dest_name] = key
+        keep_slides.add(dest_name)
+        items.append(
+            {
+                "name": dest_name,
+                "kind": slide.kind,
+                "date": caption_date_iso,
+                "day_order": day_idx,
+                "sources": list(slide.names),
+            }
+        )
+
+    return items, new_render_manifest, keep_slides, render_errors
+
+
+def _build_manifest_payload(
+    *,
+    origin: str,
+    heic_count: int,
+    errors: Sequence[dict[str, Any]],
+    candidates: Sequence[Any],
+    selection: Any,
+    items: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    """Assemble the schema-2 manifest.json dictionary."""
+    admission_rejects = sum(
+        selection.rejected.get(reason, 0) for reason in ("too_small", "aspect", "screenshot")
+    )
+    undated_slides = sum(1 for slide in selection.slides if slide.captured_at is None)
+    return {
+        "schema": 2,
+        "count": len(items),
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "origin": origin,
+        "skipped_heic": heic_count,
+        "errors": list(errors),
+        "selection": {
+            "photos": len(candidates),
+            "admitted": len(candidates) - admission_rejects,
+            "rejected": dict(selection.rejected),
+            "slides": len(selection.slides),
+            "days_covered": selection.days_covered,
+            "days_total": selection.days_total,
+            "undated": undated_slides,
+        },
+        "items": list(items),
+    }
+
+
 def sync_photos(
     base_url: str,
     user: str,
@@ -354,11 +474,19 @@ def sync_photos(
     *,
     dry_run: bool = False,
     session: requests.Session | None = None,
+    today: date | None = None,
 ) -> list[str]:
     """Synchronise photos from WebDAV to dest_dir. Returns dry-run action lines if dry_run=True."""
-    mirror_path = dest_dir / ".mirror-manifest.json"
-    manifest_path = dest_dir / "manifest.json"
-    prev_manifest = _load_mirror_manifest(mirror_path)
+    dest_dir = pathlib.Path(dest_dir)
+    effective_today = date.today() if today is None else today
+
+    cache_dir = dest_dir / photo_cache.CACHE_SUBDIR
+    cache_manifest_path = cache_dir / photo_cache.CACHE_MANIFEST_NAME
+    prev_cache = photo_cache.load_manifest(cache_dir)
+    if cache_manifest_path.is_file():
+        prev_count = len(prev_cache)
+    else:
+        prev_count = len(_load_mirror_manifest(dest_dir / ".mirror-manifest.json"))
 
     owns_session = session is None
     if session is None:
@@ -369,81 +497,66 @@ def sync_photos(
     try:
         discovered, heic_count = list_remote_photos(session, base_url)
 
-        prev_count = len(prev_manifest)
         if prev_count > 0 and len(discovered) < prev_count * 0.5:
             raise SyncError(
                 f"discovered count dropped from {prev_count} to {len(discovered)} (>50%); aborting before prune"
             )
 
-        if not dry_run:
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            lock = _acquire_sync_lock(dest_dir)
-            if lock is None:
-                # Another sync owns the mirror; cron overlap is expected and harmless.
-                return []
-
-        actions: list[str] = []
-        new_mirror: dict[str, dict[str, Any]] = {}
-        manifest_items: list[dict[str, Any]] = []
-        expected_locals: set[str] = set()
-
-        for photo in sorted(discovered, key=lambda p: p.rel_path):
-            local_name = _local_filename(photo.rel_path)
-            local_path = dest_dir / local_name
-            expected_locals.add(local_name)
-            prev_entry = prev_manifest.get(photo.rel_path)
-
-            if _is_unchanged(photo, prev_entry, local_path, local_name):
-                width = prev_entry.get("w")
-                height = prev_entry.get("h")
-                if not isinstance(width, int) or not isinstance(height, int):
-                    with Image.open(local_path) as existing:
-                        width, height = existing.size
-            elif dry_run:
-                verb = "update" if photo.rel_path in prev_manifest else "add"
-                actions.append(f"{verb} {photo.rel_path} -> {local_name}")
-                width, height = 0, 0
-            else:
-                width, height = _download_and_convert(session, photo.url, local_path)
-
-            new_mirror[photo.rel_path] = {
-                "etag": photo.etag,
-                "mtime": photo.mtime,
-                "size": photo.size,
-                "local_name": local_name,
-                "w": width,
-                "h": height,
-            }
-            manifest_items.append({"name": local_name, "w": width, "h": height})
-
-        # Determine files to prune after the full listing succeeded.
-        for remote_path, entry in sorted(prev_manifest.items()):
-            old_local = entry.get("local_name") if isinstance(entry, dict) else None
-            if remote_path not in new_mirror and old_local and old_local not in expected_locals:
-                if dry_run:
-                    actions.append(f"prune {old_local}")
+        sorted_discovered = sorted(discovered, key=lambda p: p.rel_path)
 
         if dry_run:
-            if heic_count > 0:
-                actions.append(f"skipped {heic_count} heic file(s)")
-            return actions
+            return _plan_dry_run(sorted_discovered, prev_cache, cache_dir, heic_count, effective_today)
 
-        manifest_items.sort(key=lambda item: item["name"])
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        lock = _acquire_sync_lock(dest_dir)
+        if lock is None:
+            # Another sync owns the mirror; cron overlap is expected and harmless.
+            return []
+
+        refresh = photo_cache.refresh(
+            sorted_discovered,
+            dest_dir,
+            prev_cache,
+            download=photo_cache.http_downloader(session),
+        )
+
+        if len(refresh.errors) > MAX_ERROR_FRACTION * len(discovered):
+            raise SyncError(
+                f"{len(refresh.errors)} of {len(discovered)} photos failed (>20%); aborting before publish"
+            )
+
+        candidates = photo_select.candidates_from_cache(refresh.entries.values())
+        selection = photo_select.select(candidates, today=effective_today)
+        order = photo_select.day_order(selection, seed=effective_today)
+
+        manifest_items, new_render_manifest, keep_slides, render_errors = _render_slides(
+            dest_dir,
+            cache_dir,
+            refresh.entries,
+            selection,
+            order,
+            _load_render_manifest(dest_dir / RENDER_MANIFEST_NAME),
+        )
+
+        all_errors = list(refresh.errors) + render_errors
+        if len(all_errors) > MAX_ERROR_FRACTION * len(discovered):
+            raise SyncError(
+                f"{len(all_errors)} of {len(discovered)} photos failed (>20%); aborting before publish"
+            )
+
         parsed = urlparse(base_url)
         origin = parsed.hostname or parsed.netloc
-        manifest_payload = {
-            "count": len(manifest_items),
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "origin": origin,
-            "skipped_heic": heic_count,
-            "items": manifest_items,
-        }
-        _atomic_write_json(mirror_path, new_mirror)
-        _atomic_write_json(manifest_path, manifest_payload)
-
-        if dest_dir.is_dir():
-            keep_names = expected_locals | {"manifest.json", ".mirror-manifest.json"}
-            _prune_dest(dest_dir, keep_names)
+        manifest_payload = _build_manifest_payload(
+            origin=origin,
+            heic_count=heic_count,
+            errors=all_errors,
+            candidates=candidates,
+            selection=selection,
+            items=manifest_items,
+        )
+        _atomic_write_json(dest_dir / "manifest.json", manifest_payload)
+        _atomic_write_json(dest_dir / RENDER_MANIFEST_NAME, new_render_manifest)
+        _prune_dest(dest_dir, keep_slides | {"manifest.json"})
 
         # HEIC skips are recorded in manifest.json ("skipped_heic"), never on stderr:
         # cron runs must stay silent on success and HEIC is a standing share condition.

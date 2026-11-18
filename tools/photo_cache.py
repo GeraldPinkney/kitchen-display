@@ -323,6 +323,30 @@ def http_downloader(session: requests.Session) -> Callable[[object], bytes]:
     return _download
 
 
+def is_reusable(
+    prev_entry: CacheEntry | None,
+    photo: Any,
+    cache_dir: pathlib.Path,
+    *,
+    version: int = CACHE_VERSION,
+) -> bool:
+    """Return True when prev_entry matches photo metadata, cache version, and a valid cached JPEG."""
+    if prev_entry is None:
+        return False
+    cache_path = pathlib.Path(cache_dir)
+    if _read_manifest_version(cache_path) != version:
+        return False
+    local_name = cache_name(photo.rel_path)
+    if (
+        prev_entry.local_name != local_name
+        or prev_entry.etag != photo.etag
+        or prev_entry.mtime != photo.mtime
+        or prev_entry.size != photo.size
+    ):
+        return False
+    return _is_valid_cached_jpeg(cache_path / local_name)
+
+
 def refresh(
     photos: Iterable[Any],
     dest_dir: pathlib.Path,
@@ -336,9 +360,6 @@ def refresh(
     cache_dir.mkdir(parents=True, exist_ok=True)
     resolved_cache_dir = cache_dir.resolve()
 
-    recorded_version = _read_manifest_version(cache_dir)
-    version_matches = recorded_version == version
-
     sorted_photos = sorted(photos, key=lambda p: p.rel_path)
     entries: dict[str, CacheEntry] = {}
     errors: list[dict] = []
@@ -350,15 +371,8 @@ def refresh(
         local_path = cache_dir / local_name
         prev = prev_entries.get(photo.rel_path)
 
-        if (
-            version_matches
-            and prev is not None
-            and prev.local_name == local_name
-            and prev.etag == photo.etag
-            and prev.mtime == photo.mtime
-            and prev.size == photo.size
-            and _is_valid_cached_jpeg(local_path)
-        ):
+        if is_reusable(prev, photo, cache_dir, version=version):
+            assert prev is not None
             entries[photo.rel_path] = prev
             reused += 1
             continue
