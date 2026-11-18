@@ -14,5 +14,5 @@ systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESS
 (pgrep -x kanshi >/dev/null || kanshi) &
 swayidle -w \
     timeout 300  'timeout 5 photo-switch show' \
-    timeout 3600 'wlopm --off "*"' \
-    resume 'photo-switch hide; wlopm --on "*"' &
+    timeout 3600 "wlopm --off '*'" \
+    resume "photo-switch hide; wlopm --on '*'" &
