@@ -12,6 +12,7 @@ import os
 import pathlib
 import re
 import sys
+import time
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 import xml.etree.ElementTree as ET
@@ -26,6 +27,7 @@ MAX_LONG_SIDE = 1920
 MAX_SHORT_SIDE = 1200
 JPEG_QUALITY = 80
 REQUEST_TIMEOUT = (10, 60)
+STALE_TMP_SECONDS = 3600
 
 DAV_NS = "{DAV:}"
 PROPFIND_BODY = (
@@ -52,6 +54,33 @@ class RemotePhoto:
     etag: str
     mtime: str
     size: int | None
+
+
+DEFAULT_ENV_FILE = pathlib.Path.home() / ".config" / "kitchen-display" / "env"
+
+
+def load_env_file(path: pathlib.Path | None = None) -> None:
+    """Load KEY=VALUE pairs from the kiosk env file without overriding the environment.
+
+    Cron runs with a bare environment, so the panel's credential file has to be read
+    here rather than relying on a shell wrapper in the crontab line.
+    """
+    env_path = pathlib.Path(path or os.environ.get("KITCHEN_ENV_FILE") or DEFAULT_ENV_FILE)
+    try:
+        text = env_path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key.startswith("export "):
+            key = key[len("export "):].strip()
+        if not key or key in os.environ:
+            continue
+        os.environ[key] = value.strip().strip("'\"")
 
 
 def _require_env() -> tuple[str, str, str]:
@@ -284,6 +313,39 @@ def _load_mirror_manifest(path: pathlib.Path) -> dict[str, dict[str, Any]]:
     return data
 
 
+def _acquire_sync_lock(dest_dir: pathlib.Path):
+    """Take an exclusive non-blocking lock so cron and manual runs cannot overlap.
+
+    Two concurrent runs are destructive: each prunes files the other is mid-download
+    on, which surfaced as "No such file or directory: .../.dl-*.tmp".
+    """
+    import fcntl
+
+    handle = open(dest_dir / ".sync.lock", "w")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        return None
+    return handle
+
+
+def _prune_dest(dest_dir: pathlib.Path, keep_names: set[str], now: float | None = None) -> list[str]:
+    """Remove stale mirror outputs, leaving dot-files, notes and in-flight downloads alone."""
+    removed: list[str] = []
+    stamp = time.time() if now is None else now
+    for child in dest_dir.iterdir():
+        if not child.is_file() or child.name in keep_names or child.name.startswith("."):
+            continue
+        if child.suffix.lower() == ".jpg":
+            child.unlink()
+            removed.append(child.name)
+        elif child.suffix == ".tmp" and stamp - child.stat().st_mtime > STALE_TMP_SECONDS:
+            child.unlink()
+            removed.append(child.name)
+    return removed
+
+
 def sync_photos(
     base_url: str,
     user: str,
@@ -302,6 +364,7 @@ def sync_photos(
     if session is None:
         session = requests.Session()
     session.auth = (user, password)
+    lock = None
 
     try:
         discovered, heic_count = list_remote_photos(session, base_url)
@@ -314,6 +377,10 @@ def sync_photos(
 
         if not dry_run:
             dest_dir.mkdir(parents=True, exist_ok=True)
+            lock = _acquire_sync_lock(dest_dir)
+            if lock is None:
+                # Another sync owns the mirror; cron overlap is expected and harmless.
+                return []
 
         actions: list[str] = []
         new_mirror: dict[str, dict[str, Any]] = {}
@@ -376,14 +443,14 @@ def sync_photos(
 
         if dest_dir.is_dir():
             keep_names = expected_locals | {"manifest.json", ".mirror-manifest.json"}
-            for child in dest_dir.iterdir():
-                if child.is_file() and child.name not in keep_names:
-                    child.unlink()
+            _prune_dest(dest_dir, keep_names)
 
         # HEIC skips are recorded in manifest.json ("skipped_heic"), never on stderr:
         # cron runs must stay silent on success and HEIC is a standing share condition.
         return []
     finally:
+        if lock is not None:
+            lock.close()
         if owns_session:
             session.close()
 
@@ -403,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    load_env_file()
     try:
         base_url, user, password = _require_env()
     except ValueError as exc:

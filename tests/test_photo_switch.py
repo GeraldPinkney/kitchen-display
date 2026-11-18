@@ -216,6 +216,19 @@ def test_hide_falls_back_to_default_when_url_file_absent(switch_mod, monkeypatch
     assert switch_mod.resolve_dashboard_url("http://explicit.local/x") == "http://explicit.local/x"
 
 
+def test_needs_venv_interpreter_uses_prefix_not_resolved_executable(switch_mod, tmp_path):
+    """A venv's bin/python symlinks the system interpreter, so sys.prefix decides."""
+    fake_venv = tmp_path / "photoswitch"
+    (fake_venv / "bin").mkdir(parents=True)
+    fake_python = fake_venv / "bin" / "python"
+    fake_python.write_text("#!/bin/sh\n", encoding="utf-8")
+    fake_python.chmod(0o755)
+
+    assert switch_mod._needs_venv_interpreter("/usr", fake_python) is True
+    assert switch_mod._needs_venv_interpreter(str(fake_venv), fake_python) is False
+    assert switch_mod._needs_venv_interpreter("/usr", tmp_path / "missing" / "bin" / "python") is False
+
+
 def test_cdp_port_closed_exits_1_with_prefixed_line(switch_mod, monkeypatch, capsys):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))

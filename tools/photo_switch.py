@@ -26,14 +26,38 @@ class PhotoSwitchError(Exception):
     """Raised when CDP discovery or navigation fails."""
 
 
-def _ensure_venv() -> None:
+def _needs_venv_interpreter(prefix: str | pathlib.Path, venv_python: pathlib.Path) -> bool:
+    """True when this interpreter is outside the venv that owns venv_python."""
+    if not venv_python.is_file():
+        return False
+    return pathlib.Path(prefix).resolve() != venv_python.parent.parent.resolve()
+
+
+def _venv_interpreter() -> pathlib.Path | None:
+    """Return the photoswitch venv interpreter when this one cannot import websockets.
+
+    Compares sys.prefix, not the resolved executable: a venv's bin/python is a symlink
+    to the system interpreter, so resolve()-based comparisons decide we are already in
+    the venv and the helper dies with "No module named 'websockets'" on the panel.
+    """
     try:
         import websockets  # noqa: F401
-        return
     except ImportError:
-        venv_python = pathlib.Path.home() / ".local" / "venvs" / "photoswitch" / "bin" / "python"
-        if venv_python.is_file() and pathlib.Path(sys.executable).resolve() != venv_python.resolve():
-            os.execv(str(venv_python), [str(venv_python), *sys.argv])
+        pass
+    else:
+        return None
+
+    venv_python = pathlib.Path(
+        os.environ.get("PHOTOSWITCH_PYTHON")
+        or pathlib.Path.home() / ".local" / "venvs" / "photoswitch" / "bin" / "python"
+    )
+    return venv_python if _needs_venv_interpreter(sys.prefix, venv_python) else None
+
+
+def _ensure_venv() -> None:
+    venv_python = _venv_interpreter()
+    if venv_python is not None:
+        os.execv(str(venv_python), [str(venv_python), *sys.argv])
 
 
 def _read_url_file() -> str:

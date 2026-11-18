@@ -55,10 +55,12 @@ Run on `kitchen-display` over SSH:
    systemctl --user status kitchen-display.service kitchen-display-http.service
    ```
    Confirm `curl -I http://127.0.0.1:8788/solar.html` returns `200 OK`.
-2. **Screen blank and wake (`wlopm` on `HDMI-A-1`)**:
+2. **Screen blank and wake (`wlopm` on the active output)**: `wlopm` takes the
+   connector name, which changes with the port (`HDMI-A-2` on the current panel,
+   `HDMI-A-1` previously) — `"*"` matches whatever is connected:
    ```bash
-   WAYLAND_DISPLAY=wayland-0 wlopm --off HDMI-A-1
-   WAYLAND_DISPLAY=wayland-0 wlopm --on HDMI-A-1
+   WAYLAND_DISPLAY=wayland-0 wlopm --off "*"
+   WAYLAND_DISPLAY=wayland-0 wlopm --on "*"
    ```
    Also verify touch input wakes the screen when blanked by `swayidle`.
 3. **Nightly reboot timer**:

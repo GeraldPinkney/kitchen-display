@@ -132,8 +132,8 @@ def test_labwc_autostart_wires_photo_frame_swayidle_timeouts(repo_root):
     assert len(sway_lines) == 1, sway_lines
     line = sway_lines[0]
     assert "timeout 300" in line and "timeout 5 photo-switch show" in line, line
-    assert "timeout 3600" in line and "wlopm --off HDMI-A-1" in line, line
-    assert "resume" in line and "photo-switch hide; wlopm --on HDMI-A-1" in line, line
+    assert "timeout 3600" in line and 'wlopm --off "*"' in line, line
+    assert "resume" in line and 'photo-switch hide; wlopm --on "*"' in line, line
     assert line.endswith("&"), line
 
 

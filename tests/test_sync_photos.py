@@ -9,6 +9,7 @@ import os
 import pathlib
 import socketserver
 import threading
+import time
 import xml.etree.ElementTree as ET
 
 from PIL import Image
@@ -137,6 +138,42 @@ def sync_mod():
     return load_tool("sync_photos")
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_env_file(monkeypatch):
+    """Never read the real ~/.config/kitchen-display/env from the test host."""
+    monkeypatch.setenv("KITCHEN_ENV_FILE", "/nonexistent/kitchen-display/env")
+
+
+def test_env_file_loader_reads_credentials_without_overriding_environment(sync_mod, monkeypatch, tmp_path):
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "# comment\n"
+        "NEXTCLOUD_PHOTO_URL=https://cloud.example.test/remote.php/dav/files/kiosk/Photos\n"
+        "NEXTCLOUD_PHOTO_USER='kiosk'\n"
+        'NEXTCLOUD_PHOTO_APP_PASSWORD="quoted-secret"\n'
+        "ALREADY_SET=from-file\n",
+        encoding="utf-8",
+    )
+    for var in ("NEXTCLOUD_PHOTO_URL", "NEXTCLOUD_PHOTO_USER", "NEXTCLOUD_PHOTO_APP_PASSWORD"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("ALREADY_SET", "from-environment")
+
+    sync_mod.load_env_file(env_file)
+
+    assert os.environ["NEXTCLOUD_PHOTO_URL"].endswith("/Photos")
+    assert os.environ["NEXTCLOUD_PHOTO_USER"] == "kiosk"
+    assert os.environ["NEXTCLOUD_PHOTO_APP_PASSWORD"] == "quoted-secret"
+    assert os.environ["ALREADY_SET"] == "from-environment"
+    assert sync_mod._require_env()[1] == "kiosk"
+
+
+def test_env_file_loader_is_a_noop_when_file_missing(sync_mod, monkeypatch):
+    for var in ("NEXTCLOUD_PHOTO_URL", "NEXTCLOUD_PHOTO_USER", "NEXTCLOUD_PHOTO_APP_PASSWORD"):
+        monkeypatch.delenv(var, raising=False)
+    sync_mod.load_env_file("/nonexistent/kitchen-display/env")
+    assert "NEXTCLOUD_PHOTO_USER" not in os.environ
+
+
 def test_missing_credentials_exits_2_with_single_stderr_line(sync_mod, monkeypatch, capsys, tmp_path):
     for var in ("NEXTCLOUD_PHOTO_URL", "NEXTCLOUD_PHOTO_USER", "NEXTCLOUD_PHOTO_APP_PASSWORD"):
         monkeypatch.delenv(var, raising=False)
@@ -161,6 +198,61 @@ def test_parses_propfind_fixture_xml(sync_mod, repo_root):
     assert photos[0].etag == '"garden-1"'
     assert photos[0].size == 1024
     assert heic_count == 1
+
+
+def _seed_single_photo(state, sync_mod) -> None:
+    """Populate the fake WebDAV with one /Photos/ landscape JPEG."""
+    data = _make_image_bytes((1200, 900), fmt="JPEG")
+    state.collections["/Photos/"] = [
+        {
+            "href": "/Photos/one.jpg",
+            "is_dir": False,
+            "etag": '"e1"',
+            "mtime": "Mon, 01 Jan 2026 00:00:00 GMT",
+            "size": len(data),
+        },
+    ]
+    state.files["/Photos/one.jpg"] = data
+
+
+def test_concurrent_sync_is_skipped_when_lock_is_held(sync_mod, webdav_server, tmp_path):
+    state, base_url = webdav_server
+    _seed_single_photo(state, sync_mod)
+    dest = tmp_path / "photos"
+    dest.mkdir()
+    held = sync_mod._acquire_sync_lock(dest)
+    assert held is not None
+    try:
+        assert sync_mod.sync_photos(base_url, "kiosk", "secret", dest_dir=dest) == []
+        assert not (dest / "manifest.json").exists()
+        assert state.get_calls == [], "a locked-out run must not download anything"
+    finally:
+        held.close()
+    sync_mod.sync_photos(base_url, "kiosk", "secret", dest_dir=dest)
+    assert (dest / "manifest.json").is_file()
+
+
+def test_prune_removes_stale_jpegs_but_keeps_inflight_temp_and_notes(sync_mod, webdav_server, tmp_path):
+    state, base_url = webdav_server
+    _seed_single_photo(state, sync_mod)
+    dest = tmp_path / "photos"
+    dest.mkdir()
+    stale_jpeg = dest / "deadbeef01-gone.jpg"
+    stale_jpeg.write_bytes(b"x")
+    inflight = dest / ".dl-deadbeef01-gone.jpg.tmp"
+    inflight.write_bytes(b"x")
+    old_tmp = dest / "leftover.jpg.tmp"
+    old_tmp.write_bytes(b"x")
+    os.utime(old_tmp, (time.time() - 7200, time.time() - 7200))
+    notes = dest / "README.txt"
+    notes.write_text("keep me", encoding="utf-8")
+
+    _, base_url = webdav_server
+    sync_mod.sync_photos(base_url, "kiosk", "secret", dest_dir=dest)
+    assert not stale_jpeg.exists()
+    assert inflight.exists(), "in-flight download of a concurrent run must survive prune"
+    assert notes.exists()
+    assert not old_tmp.exists(), "stale temp files older than an hour should be reclaimed"
 
 
 def test_parses_propfind_with_reverse_proxy_prefix(sync_mod):
