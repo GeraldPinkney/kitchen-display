@@ -2,6 +2,19 @@
 
 Repo contract for external coding agents (`agy`, `codex`, `claude-code`).
 
+## Work Tracking (mandatory)
+- Any task for this project is a GitHub issue in `GeraldPinkney/kitchen-display`,
+  added to Project #2 "Kitchen Display" (https://github.com/users/GeraldPinkney/projects/2).
+  File the card before starting work; do not track tasks in chat, commits, or
+  `docs/status.md` alone.
+- `docs/status.md` is the K-gate checkpoint and maps each gate to its card. When a gate
+  moves, update both the card and that file in the same change.
+- Close a card only on evidence (a command's output, a capture, a test run). "Looks
+  fine" is not evidence; publish the command that proves it in the closing comment.
+- Prefer one consolidated card over several small ones when the work shares a single
+  blocker (e.g. everything gated on root on the Pi).
+- Closed as "not planned" is for owner-dropped scope; say which decision dropped it.
+
 ## Worktree & Git Discipline
 - Work inside a dedicated `git worktree` (never commit, push, or run destructive git commands).
 - Leave all edits uncommitted in the worktree; Hermes reviews, tests, and commits with a `Delegated-by: agy/<conversation_id>` trailer.
