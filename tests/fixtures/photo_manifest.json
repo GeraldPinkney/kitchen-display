@@ -1,17 +1,46 @@
 {
+  "schema": 2,
   "count": 2,
-  "generated_at": "2026-11-18T10:00:00+00:00",
+  "generated_at": "2026-11-18T10:00:00Z",
   "origin": "cloud.example.test",
+  "skipped_heic": 0,
+  "errors": [],
+  "selection": {
+    "photos": 3,
+    "admitted": 3,
+    "rejected": {
+      "too_small": 0,
+      "aspect": 0,
+      "screenshot": 0,
+      "duplicate": 0,
+      "day_ceiling": 0,
+      "month_share": 0,
+      "cap": 0
+    },
+    "slides": 2,
+    "days_covered": 2,
+    "days_total": 2,
+    "undated": 0
+  },
   "items": [
     {
       "name": "0123456789-garden.jpg",
-      "w": 1600,
-      "h": 1200
+      "kind": "single",
+      "date": "2026-06-18",
+      "day_order": 0,
+      "sources": [
+        "2026/06/garden.jpg"
+      ]
     },
     {
-      "name": "abcdef0123-kitchen.jpg",
-      "w": 1920,
-      "h": 1080
+      "name": "pair-abcdef0123-fedcba9876.jpg",
+      "kind": "pair",
+      "date": "2025-05-12",
+      "day_order": 1,
+      "sources": [
+        "2025/05/left.jpg",
+        "2025/05/right.jpg"
+      ]
     }
   ]
 }

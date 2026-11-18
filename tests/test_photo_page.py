@@ -103,13 +103,61 @@ def test_photo_page_returns_to_the_dashboard_on_first_touch(repo_root):
     assert "window.location.replace(getReturnUrl())" in body
 
 
+def test_photo_page_cache_busts_slide_urls_with_generated_at(repo_root):
+    body = (repo_root / "kiosk" / "photo.html").read_text(encoding="utf-8")
+    assert '"?v="' in body
+    assert "encodeURIComponent(data.generated_at)" in body
+    assert '"photos/" + encodeURIComponent(item.name) + versionQuery' in body
+
+
 def test_photo_manifest_fixture_matches_contract(repo_root):
     manifest = json.loads((repo_root / "tests" / "fixtures" / "photo_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["schema"] == 2
     assert manifest["count"] == len(manifest["items"])
     assert isinstance(manifest["generated_at"], str) and "T" in manifest["generated_at"]
     assert isinstance(manifest["origin"], str) and manifest["origin"]
-    for item in manifest["items"]:
-        assert set(item) == {"name", "w", "h"}
+    assert isinstance(manifest["skipped_heic"], int) and not isinstance(manifest["skipped_heic"], bool)
+    assert manifest["skipped_heic"] >= 0
+    assert isinstance(manifest["errors"], list)
+
+    selection = manifest["selection"]
+    assert isinstance(selection, dict)
+    assert set(selection) == {
+        "photos",
+        "admitted",
+        "rejected",
+        "slides",
+        "days_covered",
+        "days_total",
+        "undated",
+    }
+    for key in ("photos", "admitted", "slides", "days_covered", "days_total", "undated"):
+        assert isinstance(selection[key], int) and not isinstance(selection[key], bool)
+        assert selection[key] >= 0
+
+    rejected = selection["rejected"]
+    assert isinstance(rejected, dict)
+    assert set(rejected) == {
+        "too_small",
+        "aspect",
+        "screenshot",
+        "duplicate",
+        "day_ceiling",
+        "month_share",
+        "cap",
+    }
+    for count in rejected.values():
+        assert isinstance(count, int) and not isinstance(count, bool)
+        assert count >= 0
+
+    for expected_day_order, item in enumerate(manifest["items"]):
+        assert set(item) == {"name", "kind", "date", "day_order", "sources"}
         assert isinstance(item["name"], str) and item["name"].endswith(".jpg")
-        assert isinstance(item["w"], int) and item["w"] > 0
-        assert isinstance(item["h"], int) and item["h"] > 0
+        assert item["kind"] in {"single", "pair", "backdrop"}
+        assert item["date"] is None or (isinstance(item["date"], str) and len(item["date"]) > 0)
+        assert isinstance(item["day_order"], int) and not isinstance(item["day_order"], bool)
+        assert item["day_order"] == expected_day_order
+        assert isinstance(item["sources"], list)
+        expected_sources_len = 2 if item["kind"] == "pair" else 1
+        assert len(item["sources"]) == expected_sources_len
+        assert all(isinstance(src, str) and len(src) > 0 for src in item["sources"])

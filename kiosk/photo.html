@@ -150,6 +150,11 @@
           return;
         }
 
+        const versionQuery =
+          typeof data.generated_at === "string" && data.generated_at.length > 0
+            ? "?v=" + encodeURIComponent(data.generated_at)
+            : "";
+
         const layers = [
           document.getElementById("layer-a"),
           document.getElementById("layer-b"),
@@ -161,7 +166,7 @@
           for (let attempts = 0; attempts < items.length; attempts += 1) {
             const item = items[index];
             index = (index + 1) % items.length;
-            const src = "photos/" + encodeURIComponent(item.name);
+            const src = "photos/" + encodeURIComponent(item.name) + versionQuery;
             try {
               await preload(src);
               const nextLayer = 1 - activeLayer;
