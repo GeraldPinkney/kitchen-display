@@ -23,6 +23,25 @@ views:
             name: Battery SoC
             min: 0
             max: 100
+            needle: true
+            severity:
+              red: 0
+              yellow: 20
+              green: 40
+          # The gauge colours by SoC only, so it cannot express "this number is
+          # the inverter's guess because the BMS link is down" (P-63). The line
+          # below carries that, and reads the bit-decoded entity rather than the
+          # raw statusText (kitchen-display#20).
+          - type: markdown
+            content: |-
+              {%- set comms = states('sensor.luxpower_battery_comms') -%}
+              {%- if comms == 'failed' -%}
+              **Battery link down** — {{ state_attr('sensor.luxpower_battery_comms', 'warning_meaning') or 'battery communication failure' }}
+              {%- elif comms == 'ok' -%}
+              Battery link ok
+              {%- else -%}
+              Battery link unknown
+              {%- endif %} · {{ states('sensor.luxpower_battery_voltage') }} V{% if state_attr('sensor.luxpower_battery_soc', 'estimate') %} · SoC is a guess{% endif %}
           - type: glance
             title: Power Now
             entities:
@@ -59,6 +78,8 @@ views:
             entities:
               - entity: sensor.luxpower_inverter_status
                 name: Inverter Status
+              - entity: sensor.luxpower_battery_comms
+                name: Battery Link
               - entity: sensor.luxpower_battery_voltage
                 name: Battery Voltage
               - entity: sensor.luxpower_solar_power
