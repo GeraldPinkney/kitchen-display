@@ -18,12 +18,14 @@ work-tracking rule in `AGENTS.md`).
 | Card | Covers |
 |------|--------|
 | #4 Provision Pi (closed) | kiosk unit, launcher, K1, K2 boot gate, K10 |
-| #6 HA Lovelace dashboard (open) | dashboard content, K8 push tooling, K11 kiosk chrome |
+| #6 HA Lovelace dashboard (closed) | dashboard content, K8 push tooling |
+| #26 K11 kiosk chrome (open) | K11 — split out of #6 when it closed |
 | #8 Boot hardening (open, needs root for the rest) | K3 journald, K6 nightly schedule, K7 provisioning, boot-clock skew |
-| #11 K9 panel health cron (open) | K9 |
+| #11 K9 panel health cron (closed) | K9 — cron `981ed65dcda9` |
 | #5 Physical build (open, owner confirm) | mount/wiring, closes on owner's word |
 | #10 Polish, docs, v1.0 | README, docs, tag |
-| #17 Photo frame selection/day order (shipped in P1) | photo frame content rules |
+| #17 Photo frame selection/day order (P1 shipped) | photo frame content rules |
+| #18 Face-aware selection (deferred) | P4 of #17 |
 
 Closed: #1 hardware, #2 repo prep, #3 solar page, #7 display toggle, #9 power draw
 (not planned — the smart plug was dropped as K12), #12 solar embed, #13, #14 (owner
@@ -60,7 +62,7 @@ verified blank/wake after 60 min idle), #16 provisioning split, #20 battery tile
 | K8 | Fix dashboard push tooling | **DONE** (`websockets` 17.4 in the kitchen venv) | #6 |
 | K9 | Device health cron (silent-on-success) | **DEPLOYED** — cron `981ed65dcda9` (15m) runs `kitchen_panel_watch.py`; forced-failure test recorded below | #11 |
 | K10 | Network policy | **DONE** (WiFi-only is the design, documented in `install.md`) | #4 |
-| K11 | Optional kiosk chrome (`?kiosk` header/sidebar) | **OPEN** — `?kiosk` is inert today, chrome still visible | #6 |
+| K11 | Optional kiosk chrome (`?kiosk` header/sidebar) | **OPEN** (#26) — `?kiosk` is inert today, chrome still visible | #26 |
 | K12 | Smart plug | **DROPPED** (owner deferred, do not resurface unprompted) | #9 |
 
 ## K2 gate: the evidence that closed it
@@ -252,7 +254,7 @@ and manage units, not to become root.
 2. Owner: the root block above, starting with the K7 re-run (it unblocks the "rebuild
    reproduces the panel" claim).
 3. K3 (#8): journald persistence, then re-read the reboot evidence.
-4. K11 (#6): decide whether the visible sidebar/header matters; close the card either
+4. K11 (#26): decide whether the visible sidebar/header matters; close the card either
    way.
 5. #5: owner confirms the physical mount, then it closes.
 6. #10: README + BOM + tag `v1.0` once the above are closed.
