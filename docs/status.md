@@ -58,7 +58,7 @@ verified blank/wake after 60 min idle), #16 provisioning split, #20 battery tile
 | K6 | Nightly reboot schedule | **DONE** — timer enabled+active, next elapse 2026-11-21 02:30, fired 2026-11-20 (boot 02:31) | #8 |
 | K7 | Pi checkout + idempotent `provision/install.sh` | **CODE DONE** (PR #23), live re-run pending root — see the K7 gate | #8 |
 | K8 | Fix dashboard push tooling | **DONE** (`websockets` 17.4 in the kitchen venv) | #6 |
-| K9 | Device health cron (silent-on-success) | **IN PROGRESS** — spec written, implementation delegated, not yet deployed | #11 |
+| K9 | Device health cron (silent-on-success) | **DEPLOYED** — cron `981ed65dcda9` (15m) runs `kitchen_panel_watch.py`; forced-failure test recorded below | #11 |
 | K10 | Network policy | **DONE** (WiFi-only is the design, documented in `install.md`) | #4 |
 | K11 | Optional kiosk chrome (`?kiosk` header/sidebar) | **OPEN** — `?kiosk` is inert today, chrome still visible | #6 |
 | K12 | Smart plug | **DROPPED** (owner deferred, do not resurface unprompted) | #9 |
@@ -150,6 +150,30 @@ black frame is not a frozen one.
 
 Non-goals: the watchdog never restarts the kiosk, and never uses `pkill -f`/`pgrep -f`
 over SSH (both mask the crash-loop evidence and the latter kills the session).
+
+Deployment: implementation `kitchen_panel_watch.py` + 22 offline specs in
+`/opt/data/ops` (probe is the seam), cron shim `/opt/data/scripts/kitchen_panel_watch.py`
+(`role: shim_external`, `owner: kiosk` in `repo_boundary_allowlist.json`), cron job
+**`981ed65dcda9`** every 15 minutes, `no_agent`, delivered to Telegram; empty stdout
+sends nothing.
+
+Forced-failure test (the card's acceptance), run through the deployed shim:
+
+    $ python3 /opt/data/scripts/kitchen_panel_watch.py          # healthy panel
+    (no output, exit 0)
+    $ ssh hermes@192.168.178.56 'systemctl --user stop kitchen-display.service'
+    $ python3 /opt/data/scripts/kitchen_panel_watch.py
+    kitchen panel: kitchen-display.service is inactive; chromium process is not running;
+    kitchen-display.service had an unexpected restart; no home assistant socket
+    (exit 0 — one line)
+    $ ssh hermes@192.168.178.56 'systemctl --user start kitchen-display.service'
+    $ python3 /opt/data/scripts/kitchen_panel_watch.py
+    kitchen panel: kitchen-display.service had an unexpected restart
+    (exit 0 — one line, naming the restart the test itself caused)
+    $ rm -f /opt/data/ops/.kitchen_panel_watch_state.json       # fresh baseline
+
+Exit 2 is reserved for "the check could not run" (ssh failure, no grim, unreadable
+state) and writes to stderr, so a broken watchdog never looks like a healthy panel.
 
 ## Verified evidence (re-runnable)
 
