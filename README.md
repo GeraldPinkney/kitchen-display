@@ -19,7 +19,7 @@ Countertop kitchen touch display for the Pinkney homelab, running a Home Assista
 - **Service Supervision**: `kiosk/kitchen-display.service` (browser kiosk) and `kiosk/kitchen-display-http.service` (local static HTTP server serving `~/.local/share/kitchen-display/solar.html` on `:8788`) run as **systemd user units** (`Restart=always`, `RestartSec=5`) started from `~/.config/labwc/autostart` alongside `kanshi`.
 - **Screen Blanking**: `swayidle` + `wlopm` turns the active output off after inactivity and wakes on touch input (`"*"` matches the connector, which differs per port — `HDMI-A-2` on the current panel).
 - **Photo Frame Screensaver**: After 5 min idle, `swayidle` calls `photo-switch show` via Chromium's loopback CDP port (`127.0.0.1:9222`) to load `photo.html` on `:8788` displaying resized photos mirrored locally to `~/.local/share/kitchen-display/photos/` (synced every 30 min via cron); touch wakes and runs `photo-switch hide` back to Home Assistant, and 60 min idle blanks the output.
-- **Nightly Maintenance**: A systemd timer (`kitchen-display-reboot.timer`) reboots the Pi daily at `03:00`.
+- **Nightly Maintenance**: A systemd timer (`kitchen-display-reboot.timer`, installed from `provision/system/`) reboots the Pi daily at `02:30`.
 - **Configuration & Secrets**:
   - `~/.config/kitchen-display/env` (`chmod 600`) stores private environment variables (`KIOSK_URL`, `KIOSK_SCALE`, credentials — never committed to git).
   - `~/.config/kitchen-display/url` overrides the target URL (defaults to `http://192.168.178.84/kitchen-display/home?kiosk`).

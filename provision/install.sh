@@ -27,8 +27,6 @@ USER_UNIT_DEST="${USER_UNIT_DIR}/kitchen-display.service"
 HTTP_UNIT_DEST="${USER_UNIT_DIR}/kitchen-display-http.service"
 LABWC_DIR="${KIOSK_HOME}/.config/labwc"
 AUTOSTART_DEST="${LABWC_DIR}/autostart"
-REBOOT_SERVICE="/etc/systemd/system/kitchen-display-reboot.service"
-REBOOT_TIMER="/etc/systemd/system/kitchen-display-reboot.timer"
 DEFAULT_URL="http://192.168.178.84/kitchen-display/home?kiosk"
 
 PACKAGES=(
@@ -55,7 +53,7 @@ print_plan() {
 [plan] 5. Install launcher script to ${LAUNCHER_DEST}
 [plan] 6. Install systemd user units kitchen-display.service (${USER_UNIT_DEST}) and kitchen-display-http.service (${HTTP_UNIT_DEST}) and enable linger
 [plan] 7. Install labwc autostart entry to ${AUTOSTART_DEST}
-[plan] 8. Install and enable nightly 03:00 reboot timer (${REBOOT_TIMER})
+[plan] 8. Install the nightly 02:30 reboot units (kitchen-display-reboot.service, kitchen-display-reboot.timer) from provision/system/ and enable the timer
 [plan] 9. Install photo-frame scripts (${SYNC_PHOTOS_DEST}, ${BIN_DIR}/photo_select.py, ${BIN_DIR}/photo_format.py, ${BIN_DIR}/photo_cache.py, ${PHOTO_SWITCH_DEST}), page (${PHOTO_HTML_DEST}), dirs (${PHOTOS_DIR}, ${STATE_DIR}), and venv (${PHOTOSWITCH_VENV} with websockets)
 [plan] 10. Add user cron entry for ${KIOSK_USER}: ${CRON_LINE}
 EOF
@@ -186,32 +184,23 @@ if [[ ! -f "${AUTOSTART_DEST}" ]] || ! cmp -s "${REPO_ROOT}/kiosk/autostart" "${
         "${REPO_ROOT}/kiosk/autostart" "${AUTOSTART_DEST}"
 fi
 
-# 8. Install and enable nightly 03:00 reboot timer.
-if [[ ! -f "${REBOOT_SERVICE}" ]]; then
-    cat > "${REBOOT_SERVICE}" <<'EOF'
-[Unit]
-Description=Nightly reboot for kitchen-display kiosk
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/systemctl reboot
-EOF
-fi
-
-if [[ ! -f "${REBOOT_TIMER}" ]]; then
-    cat > "${REBOOT_TIMER}" <<'EOF'
-[Unit]
-Description=Nightly 03:00 reboot timer for kitchen-display kiosk
-
-[Timer]
-OnCalendar=*-*-* 03:00:00
-Persistent=false
-
-[Install]
-WantedBy=timers.target
-EOF
-fi
-
+# 8. Nightly reboot units. The canonical files live in provision/system/ (installed
+#    too by install-root.sh, which is the root/agent entry point). install.sh used to
+#    write its own inline 03:00 units, which disagreed with the 02:30 ones actually
+#    deployed, so a rebuild silently changed the schedule (#8, K7). Copy the files,
+#    never redefine them.
+REBOOT_UNIT_DIR="/etc/systemd/system"
+for unit in kitchen-display-reboot.service kitchen-display-reboot.timer; do
+    if [[ ! -f "${REPO_ROOT}/provision/system/${unit}" ]]; then
+        echo "Error: missing provision/system/${unit}" >&2
+        exit 1
+    fi
+    # A malformed unit would only show up at 02:30.
+    if command -v systemd-analyze >/dev/null 2>&1; then
+        systemd-analyze verify "${REPO_ROOT}/provision/system/${unit}"
+    fi
+    install -m 0644 "${REPO_ROOT}/provision/system/${unit}" "${REBOOT_UNIT_DIR}/${unit}"
+done
 systemctl daemon-reload
 systemctl enable --now kitchen-display-reboot.timer
 

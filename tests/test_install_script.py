@@ -120,6 +120,7 @@ def _stage_and_run_installer(repo_root, tmp_path, *, missing_module=None, temp_h
         (staged / "provision").mkdir(parents=True)
         shutil.copytree(repo_root / "kiosk", staged / "kiosk")
         shutil.copytree(repo_root / "tools", staged / "tools")
+        shutil.copytree(repo_root / "provision" / "system", staged / "provision" / "system")
 
         model_file = tmp_path / "pi-model"
         model_file.write_text("Raspberry Pi 5 Model B\n")
@@ -151,7 +152,8 @@ def _stage_and_run_installer(repo_root, tmp_path, *, missing_module=None, temp_h
 
     shims = tmp_path / "shims"
     shims.mkdir(exist_ok=True)
-    for cmd in ("dpkg", "apt-get", "raspi-config", "loginctl", "systemctl"):
+    for cmd in ("dpkg", "apt-get", "raspi-config", "loginctl", "systemctl",
+                "systemd-analyze"):
         shim = shims / cmd
         shim.write_text("#!/bin/sh\nexit 0\n")
         shim.chmod(0o755)
@@ -240,3 +242,39 @@ def test_missing_photo_sync_module_fails_loudly(repo_root, tmp_path, missing_mod
     assert proc.returncode != 0
     assert missing_module in (proc.stderr + proc.stdout)
     assert not (temp_home / ".local" / "bin" / "sync-photos.py").exists()
+
+
+def test_installer_ships_the_canonical_reboot_units_not_its_own(repo_root):
+    """One source of truth for the reboot schedule (#8, K7).
+
+    install.sh used to write its own 03:00 units while the panel actually runs the
+    02:30 units from provision/system/, so a rebuild from main silently changed the
+    schedule. It must copy the canonical files and never redefine them.
+    """
+    body = script_path(repo_root).read_text()
+    code = "\n".join(ln for ln in body.splitlines() if not ln.lstrip().startswith("#"))
+    assert "provision/system/${unit}" in body
+    assert "kitchen-display-reboot.service" in body
+    assert "kitchen-display-reboot.timer" in body
+    assert "OnCalendar" not in code, "install.sh must not define its own reboot schedule"
+    assert "03:00" not in code
+    assert "systemctl reboot" not in code, "the reboot action lives in the unit files"
+
+
+def test_staged_install_deploys_the_0230_reboot_schedule(repo_root, tmp_path):
+    """The unit a rebuild deploys is byte-identical to provision/system/ (02:30)."""
+    proc, _ = _stage_and_run_installer(repo_root, tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    installed = tmp_path / "systemd" / "kitchen-display-reboot.timer"
+    canonical = repo_root / "provision" / "system" / "kitchen-display-reboot.timer"
+    assert installed.is_file(), "installer did not deploy the reboot timer"
+    assert installed.read_text() == canonical.read_text()
+    assert "02:30" in installed.read_text()
+
+
+def test_dry_run_names_the_0230_reboot_units(repo_root):
+    proc = run_dry(repo_root)
+    assert proc.returncode == 0, proc.stderr
+    out = (proc.stdout + proc.stderr).lower()
+    assert "02:30" in out
+    assert "kitchen-display-reboot.timer" in out
