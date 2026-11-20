@@ -1,0 +1,15 @@
+[Unit]
+Description=Nightly reboot of the kitchen display panel at 02:30
+Documentation=https://github.com/GeraldPinkney/kitchen-display/issues/16
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+AccuracySec=1min
+RandomizedDelaySec=0
+# Deliberately NOT persistent: catching up a missed run would reboot the panel at
+# 08:40 with someone standing at it. A skipped night is the cheaper failure.
+Persistent=false
+Unit=kitchen-display-reboot.service
+
+[Install]
+WantedBy=timers.target

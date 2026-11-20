@@ -31,4 +31,6 @@ exec chromium \
     --password-store=basic \
     --disable-features=Translate,InterestCohort \
     --overscroll-history-navigation=0 \
+    --remote-debugging-port=9222 \
+    --remote-allow-origins=http://127.0.0.1 \
     "$URL"

@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly reboot of the kitchen display panel
+Documentation=https://github.com/GeraldPinkney/kitchen-display/issues/16
+
+[Service]
+Type=oneshot
+# A one-minute grace so anything writing to the photos mirror can finish and a
+# person standing at the panel sees the shutdown notice rather than a dead screen.
+ExecStart=/usr/sbin/shutdown -r +1 "Nightly kitchen display reboot"
+Nice=10
+TimeoutStartSec=2min

@@ -97,19 +97,44 @@ def test_labwc_autostart_has_no_sleep_race(repo_root):
     assert not offenders, f"autostart still sleeps instead of relying on systemd order: {offenders}"
 
 
+def _autostart_logical_lines(body: str) -> list[str]:
+    logical: list[str] = []
+    buf = ""
+    for raw in body.splitlines():
+        s = raw.strip()
+        if not s or s.startswith("#"):
+            continue
+        if s.endswith("\\"):
+            buf += s[:-1].strip() + " "
+        else:
+            logical.append((buf + s).strip())
+            buf = ""
+    if buf:
+        logical.append(buf.strip())
+    return logical
+
+
 def test_labwc_autostart_keeps_kanshi_and_never_blocks(repo_root):
     path = repo_root / "kiosk" / "autostart"
     body = path.read_text()
-    active_lines = [
-        l.strip() for l in body.splitlines()
-        if l.strip() and not l.strip().startswith("#")
-    ]
+    active_lines = _autostart_logical_lines(body)
     assert any("kanshi" in l for l in active_lines), active_lines
     assert any("swayidle" in l for l in active_lines), active_lines
     # Anything that can wait on another process (unit start, daemon) is backgrounded;
     # import-environment is a fast local call and stays synchronous by design.
     waiting = [l for l in active_lines if "systemctl --user start" in l or "kanshi)" in l or l.startswith("swayidle")]
     assert all(l.endswith("&") for l in waiting), waiting
+
+
+def test_labwc_autostart_wires_photo_frame_swayidle_timeouts(repo_root):
+    body = (repo_root / "kiosk" / "autostart").read_text()
+    sway_lines = [l for l in _autostart_logical_lines(body) if l.startswith("swayidle")]
+    assert len(sway_lines) == 1, sway_lines
+    line = sway_lines[0]
+    assert "timeout 300" in line and "timeout 5 photo-switch show" in line, line
+    assert "timeout 3600" in line and "wlopm --off '*'" in line, line
+    assert "resume" in line and "photo-switch hide; wlopm --on '*'" in line, line
+    assert line.endswith("&"), line
 
 
 def http_unit_directives(repo_root):
