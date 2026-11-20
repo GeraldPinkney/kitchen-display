@@ -1,0 +1,9 @@
+# Kitchen display: let the hermes account manage the panel's own units without a
+# password, so unattended work (nightly reboot timer, photo-frame deploys, #8
+# hardening) does not need an interactive sudo prompt.
+#
+# SECURITY: /usr/bin/systemctl unrestricted is effectively root — anything that can
+# run systemctl can start a unit that does anything. It is granted because this box
+# already trusts the hermes key with the kiosk session, and the alternative is a
+# password prompt on every scheduled change. Remove this file to revoke.
+hermes ALL=(root) NOPASSWD: /usr/bin/systemctl, /usr/bin/systemd-analyze, /usr/sbin/shutdown, /usr/bin/apt-get, /usr/bin/apt
