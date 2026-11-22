@@ -13,6 +13,7 @@ SOLAR_PLACEHOLDER="${DATA_DIR}/solar.html"
 BIN_DIR="${KIOSK_HOME}/.local/bin"
 SYNC_PHOTOS_DEST="${BIN_DIR}/sync-photos.py"
 PHOTO_SWITCH_DEST="${BIN_DIR}/photo-switch"
+SWAYIDLE_POLICY_DEST="${BIN_DIR}/swayidle-policy"
 PHOTOS_DIR="${DATA_DIR}/photos"
 PHOTO_HTML_DEST="${DATA_DIR}/photo.html"
 STATE_DIR="${KIOSK_HOME}/.local/state/kitchen-display"
@@ -25,6 +26,7 @@ LAUNCHER_DEST="${CONFIG_DIR}/launch_kiosk.sh"
 USER_UNIT_DIR="${KIOSK_HOME}/.config/systemd/user"
 USER_UNIT_DEST="${USER_UNIT_DIR}/kitchen-display.service"
 HTTP_UNIT_DEST="${USER_UNIT_DIR}/kitchen-display-http.service"
+IDLE_UNIT_DEST="${USER_UNIT_DIR}/kitchen-idle-policy.service"
 LABWC_DIR="${KIOSK_HOME}/.config/labwc"
 AUTOSTART_DEST="${LABWC_DIR}/autostart"
 DEFAULT_URL="http://192.168.178.84/kitchen-display/home?kiosk"
@@ -51,10 +53,10 @@ print_plan() {
 [plan] 3. Create settings/env directory ${CONFIG_DIR} and mode-600 env file ${ENV_FILE}
 [plan] 4. Initialize default URL file ${URL_FILE} (${DEFAULT_URL}) and local static data directory ${DATA_DIR}
 [plan] 5. Install launcher script to ${LAUNCHER_DEST}
-[plan] 6. Install systemd user units kitchen-display.service (${USER_UNIT_DEST}) and kitchen-display-http.service (${HTTP_UNIT_DEST}) and enable linger
+[plan] 6. Install systemd user units kitchen-display.service (${USER_UNIT_DEST}), kitchen-display-http.service (${HTTP_UNIT_DEST}) and kitchen-idle-policy.service (${IDLE_UNIT_DEST}) and enable linger
 [plan] 7. Install labwc autostart entry to ${AUTOSTART_DEST}
 [plan] 8. Install the nightly 02:30 reboot units (kitchen-display-reboot.service, kitchen-display-reboot.timer) from provision/system/ and enable the timer
-[plan] 9. Install photo-frame scripts (${SYNC_PHOTOS_DEST}, ${BIN_DIR}/photo_select.py, ${BIN_DIR}/photo_format.py, ${BIN_DIR}/photo_cache.py, ${PHOTO_SWITCH_DEST}), page (${PHOTO_HTML_DEST}), dirs (${PHOTOS_DIR}, ${STATE_DIR}), and venv (${PHOTOSWITCH_VENV} with websockets)
+[plan] 9. Install photo-frame scripts (${SYNC_PHOTOS_DEST}, ${BIN_DIR}/photo_select.py, ${BIN_DIR}/photo_format.py, ${BIN_DIR}/photo_cache.py, ${PHOTO_SWITCH_DEST}), idle policy (${SWAYIDLE_POLICY_DEST}), page (${PHOTO_HTML_DEST}), dirs (${PHOTOS_DIR}, ${STATE_DIR}), and venv (${PHOTOSWITCH_VENV} with websockets)
 [plan] 10. Add user cron entry for ${KIOSK_USER}: ${CRON_LINE}
 EOF
 }
@@ -175,6 +177,21 @@ fi
 install -d -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" "${USER_UNIT_DIR}/default.target.wants"
 ln -sfn "${HTTP_UNIT_DEST}" "${USER_UNIT_DIR}/default.target.wants/kitchen-display-http.service"
 chown -h "${KIOSK_USER}:${KIOSK_GROUP}" "${USER_UNIT_DIR}/default.target.wants/kitchen-display-http.service"
+
+# The idle policy owns the swayidle timers (5 h by day, 30 min by night; #32).
+# The 300 s photo-frame timeout it arms is unchanged. Without this unit the panel
+# has no screen-off timeout at all, so its absence is a failure, not a fallback.
+if [[ -f "${REPO_ROOT}/kiosk/kitchen-idle-policy.service" ]]; then
+    if [[ ! -f "${IDLE_UNIT_DEST}" ]] || ! cmp -s "${REPO_ROOT}/kiosk/kitchen-idle-policy.service" "${IDLE_UNIT_DEST}"; then
+        install -m 0644 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
+            "${REPO_ROOT}/kiosk/kitchen-idle-policy.service" "${IDLE_UNIT_DEST}"
+    fi
+    ln -sfn "${IDLE_UNIT_DEST}" "${USER_UNIT_DIR}/graphical-session.target.wants/kitchen-idle-policy.service"
+    chown -h "${KIOSK_USER}:${KIOSK_GROUP}" "${USER_UNIT_DIR}/graphical-session.target.wants/kitchen-idle-policy.service"
+else
+    echo "Error: missing kiosk/kitchen-idle-policy.service" >&2
+    exit 1
+fi
 loginctl enable-linger "${KIOSK_USER}"
 
 # 7. Install labwc autostart entry.
@@ -222,6 +239,14 @@ done
 if [[ ! -f "${PHOTO_SWITCH_DEST}" ]] || ! cmp -s "${REPO_ROOT}/tools/photo_switch.py" "${PHOTO_SWITCH_DEST}"; then
     install -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
         "${REPO_ROOT}/tools/photo_switch.py" "${PHOTO_SWITCH_DEST}"
+fi
+if [[ ! -f "${REPO_ROOT}/tools/swayidle_policy.py" ]]; then
+    echo "Error: missing ${REPO_ROOT}/tools/swayidle_policy.py" >&2
+    exit 1
+fi
+if [[ ! -f "${SWAYIDLE_POLICY_DEST}" ]] || ! cmp -s "${REPO_ROOT}/tools/swayidle_policy.py" "${SWAYIDLE_POLICY_DEST}"; then
+    install -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
+        "${REPO_ROOT}/tools/swayidle_policy.py" "${SWAYIDLE_POLICY_DEST}"
 fi
 if [[ ! -f "${PHOTO_HTML_DEST}" ]] || ! cmp -s "${REPO_ROOT}/kiosk/photo.html" "${PHOTO_HTML_DEST}"; then
     install -m 0644 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \

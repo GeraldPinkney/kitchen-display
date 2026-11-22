@@ -1,0 +1,24 @@
+[Unit]
+Description=Kitchen display idle policy (swayidle with a time-of-day screen-off)
+# graphical-session.target is RefuseManualStart on this image, so this unit is
+# started by name from labwc's autostart, exactly like kitchen-display.service.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# The compositor socket appears after labwc is up; wait for it rather than
+# letting swayidle fail straight into a restart loop.
+ExecStartPre=/bin/sh -c 'n=0; \
+    while [ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; do \
+        n=$((n+1)); [ "$n" -ge 30 ] && exit 1; sleep 1; \
+    done'
+ExecStart=%h/.local/bin/swayidle-policy --run
+# A crash must never leave the panel lit all night.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

@@ -2,8 +2,15 @@
 #
 # labwc runs this file only once the compositor is up, so every start line here is
 # correctly ordered by construction -- the old `sleep 1` / `sleep 2` chain was
-# cargo-culted and is gone. The kiosk and the static HTTP server are systemd user
-# units, so systemd supervises and restarts them; autostart only asks for them.
+# cargo-culted and is gone. The kiosk, the static HTTP server and the idle policy
+# are systemd user units, so systemd supervises and restarts them; autostart only
+# asks for them.
+#
+# The idle timers live in kitchen-idle-policy.service, not here: the screen-off
+# timeout depends on the time of day (5 h in 06:00-22:00, 30 min otherwise) and
+# swayidle cannot reload its timeouts, so the policy re-arms swayidle at the
+# window edge. Do not put an inline `swayidle` line back -- it would hold a stale
+# timeout that wins over the policy (#32).
 #
 # graphical-session.target cannot be used as the trigger: it is
 # RefuseManualStart=yes and does not activate on this image, so the units are
@@ -11,8 +18,5 @@
 systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE
 (systemctl --user start kitchen-display-http.service) &
 (systemctl --user start kitchen-display.service) &
+(systemctl --user start kitchen-idle-policy.service) &
 (pgrep -x kanshi >/dev/null || kanshi) &
-swayidle -w \
-    timeout 300  'timeout 5 photo-switch show' \
-    timeout 3600 "wlopm --off '*'" \
-    resume "photo-switch hide; wlopm --on '*'" &

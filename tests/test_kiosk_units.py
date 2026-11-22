@@ -63,7 +63,7 @@ def test_session_target_is_not_used_as_a_trigger(repo_root):
     assert not (repo_root / "kiosk" / "kitchen-session.target").exists()
 
 
-def test_labwc_autostart_starts_both_units_by_name(repo_root):
+def test_labwc_autostart_starts_all_units_by_name(repo_root):
     """Autostart cannot use a session target here, so it asks systemd for the units."""
     path = repo_root / "kiosk" / "autostart"
     if not path.is_file():
@@ -72,6 +72,7 @@ def test_labwc_autostart_starts_both_units_by_name(repo_root):
     start_lines = [l for l in body.splitlines() if "systemctl --user start" in l]
     assert any("kitchen-display.service" in l for l in start_lines), body
     assert any("kitchen-display-http.service" in l for l in start_lines), body
+    assert any("kitchen-idle-policy.service" in l for l in start_lines), body
     # labwc's autostart must not block: every unit start has to be backgrounded.
     assert all(l.rstrip().endswith("&") for l in start_lines), start_lines
     # No session-target indirection: graphical-session.target is RefuseManualStart.
@@ -119,22 +120,24 @@ def test_labwc_autostart_keeps_kanshi_and_never_blocks(repo_root):
     body = path.read_text()
     active_lines = _autostart_logical_lines(body)
     assert any("kanshi" in l for l in active_lines), active_lines
-    assert any("swayidle" in l for l in active_lines), active_lines
+    assert any("kitchen-idle-policy.service" in l for l in active_lines), active_lines
     # Anything that can wait on another process (unit start, daemon) is backgrounded;
     # import-environment is a fast local call and stays synchronous by design.
-    waiting = [l for l in active_lines if "systemctl --user start" in l or "kanshi)" in l or l.startswith("swayidle")]
+    waiting = [l for l in active_lines if "systemctl --user start" in l or "kanshi)" in l]
     assert all(l.endswith("&") for l in waiting), waiting
 
 
-def test_labwc_autostart_wires_photo_frame_swayidle_timeouts(repo_root):
+def test_labwc_autostart_leaves_the_idle_timers_to_the_policy_unit(repo_root):
+    """#32: an inline swayidle line would hold a stale timeout and win over the policy."""
     body = (repo_root / "kiosk" / "autostart").read_text()
-    sway_lines = [l for l in _autostart_logical_lines(body) if l.startswith("swayidle")]
-    assert len(sway_lines) == 1, sway_lines
-    line = sway_lines[0]
-    assert "timeout 300" in line and "timeout 5 photo-switch show" in line, line
-    assert "timeout 3600" in line and "wlopm --off '*'" in line, line
-    assert "resume" in line and "photo-switch hide; wlopm --on '*'" in line, line
-    assert line.endswith("&"), line
+    offenders = [l for l in _autostart_logical_lines(body) if l.startswith("swayidle")]
+    assert not offenders, f"autostart must not run swayidle itself: {offenders}"
+
+    unit = (repo_root / "kiosk" / "kitchen-idle-policy.service").read_text()
+    assert "ExecStart=%h/.local/bin/swayidle-policy --run" in unit, unit
+    assert "Restart=always" in unit, "a crashed policy must come back, not leave the panel lit"
+    assert "Environment=PATH=%h/.local/bin:" in unit, "photo-switch and wlopm must be on PATH"
+    assert "Environment=WAYLAND_DISPLAY=" in unit, "swayidle needs the compositor socket"
 
 
 def http_unit_directives(repo_root):

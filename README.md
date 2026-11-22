@@ -18,9 +18,13 @@ panel. Nothing here is a datasheet projection.
   the Pi; the page is served locally on `:8788` and embedded in the dashboard's `Solar` view, so the
   chart survives a Home Assistant outage.
 - **Shows a photo frame after 5 minutes idle** (`swayidle` → `photo-switch show` via Chromium's
-  loopback CDP port), advancing every 30 seconds, then blanks the output at 60 minutes idle. Touch
-  wakes the screen and drops straight back to the dashboard. Photos are mirrored from Nextcloud to
-  the Pi every 30 minutes by cron.
+  loopback CDP port), advancing every 30 seconds. Touch wakes the screen and drops straight back to
+  the dashboard. Photos are mirrored from Nextcloud to the Pi every 30 minutes by cron.
+- **Blanks the output according to the hour.** `kitchen-idle-policy.service` owns the idle timers:
+  the panel goes dark 5 hours after the last touch between 06:00 and 22:00, and 30 minutes after it
+  overnight. `swayidle` cannot reload its timeouts, so the policy re-arms it at 06:00 and 22:00. The
+  re-arm restarts the idle clock, so a panel untouched since the afternoon goes dark at 22:30 rather
+  than 22:00 — the accepted trade for not running a Wayland idle-time client (#32).
 - **Watches itself every 15 minutes.** Cron job `981ed65dcda9` probes the panel over one SSH call
   and prints nothing when it is healthy, one line when it is not. A check that could not run exits 2
   so it never looks like a panel fault — with one deliberate exception: the panel's own 02:30

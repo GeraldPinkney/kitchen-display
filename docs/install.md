@@ -32,7 +32,7 @@ KIOSK_USER=hermes ./provision/install.sh --dry-run
 sudo KIOSK_USER=hermes KIOSK_HOME=/home/hermes bash provision/install.sh
 ```
 
-This installs the packages, configures `labwc` autologin for `hermes`, seeds `~/.local/share/kitchen-display/solar.html` (if absent), installs and enables both user units — `kitchen-display.service` (scaled via `KIOSK_SCALE=1.5` for a 1280x800 logical viewport) and `kitchen-display-http.service` (serving `~/.local/share/kitchen-display/` on `:8788`) — writes the 02:30 reboot units into `/etc/systemd/system` and enables the timer, then installs `~/.local/bin/sync-photos.py`, the `photoswitch` venv and the every-30-minutes photo cron line. If Home Assistant credentials, `KIOSK_SCALE`, or custom URL overrides are needed, edit `~/.config/kitchen-display/env` (kept at mode `0600`).
+This installs the packages, configures `labwc` autologin for `hermes`, seeds `~/.local/share/kitchen-display/solar.html` (if absent), installs and enables three user units — `kitchen-display.service` (scaled via `KIOSK_SCALE=1.5` for a 1280x800 logical viewport), `kitchen-display-http.service` (serving `~/.local/share/kitchen-display/` on `:8788`) and `kitchen-idle-policy.service` (which runs `swayidle` with the time-of-day screen-off timeout) — writes the 02:30 reboot units into `/etc/systemd/system` and enables the timer, then installs `~/.local/bin/sync-photos.py`, `~/.local/bin/swayidle-policy`, the `photoswitch` venv and the every-30-minutes photo cron line. If Home Assistant credentials, `KIOSK_SCALE`, or custom URL overrides are needed, edit `~/.config/kitchen-display/env` (kept at mode `0600`).
 
 Acceptance for this step is a **second run that changes nothing**:
 
@@ -71,7 +71,11 @@ Run on `kitchen-display` over SSH:
    WAYLAND_DISPLAY=wayland-0 wlopm --off "*"
    WAYLAND_DISPLAY=wayland-0 wlopm --on "*"
    ```
-   Also verify touch input wakes the screen when blanked by `swayidle`.
+   Also verify touch input wakes the screen when blanked by `swayidle`, and that
+   `systemctl --user status kitchen-idle-policy` is active with exactly one
+   `swayidle` process (`pgrep -af swayidle`): its screen-off timeout must read
+   `18000` between 06:00 and 22:00 and `1800` outside that window. `swayidle-policy
+   --print` shows the command line it would arm right now.
 3. **Nightly reboot timer**:
    ```bash
    systemctl list-timers kitchen-display-reboot.timer

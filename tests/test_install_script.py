@@ -42,6 +42,7 @@ def test_dry_run_succeeds_and_plans_every_component(repo_root):
     out = (proc.stdout + proc.stderr).lower()
     for needle in ("apt", "chromium", "swayidle", "wlopm", "kanshi",
                    "kitchen-display.service", "kitchen-display-http.service",
+                   "kitchen-idle-policy.service", "swayidle-policy",
                    ".local/share/kitchen-display", "autostart", "reboot",
                    "sync-photos.py", "photo-switch", "photo.html",
                    "photoswitch", "websockets", "*/30"):
