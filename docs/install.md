@@ -13,7 +13,7 @@ Use Raspberry Pi Imager with the following OS customisation settings:
 
 ## 2. First Boot & Clone
 
-Ensure the Raspberry Pi 5 joins the LAN over Wi-Fi (`802.11`), connect the Waveshare 10.1" HDMI + USB touch cable, and power on with the official 27W USB-C PSU.
+Ensure the Raspberry Pi 5 joins the LAN over Wi-Fi (`802.11`), connect the Waveshare 10.1" HDMI + USB touch cable, and power on with the official 27W USB-C PSU. Ethernet stays down on purpose: `eth0` reports `NO-CARRIER` and the panel is never cabled (see **Network** at the end).
 
 From a workstation on the LAN:
 
@@ -25,14 +25,23 @@ cd ~/kitchen-display
 
 ## 3. Provision the Kiosk
 
-Preview the provisioning plan first, then execute as root:
+Preview the provisioning plan first, then execute as root (`/etc/systemd/system` and the kiosk user's crontab are touched, so this cannot run unprivileged):
 
 ```bash
 KIOSK_USER=hermes ./provision/install.sh --dry-run
-sudo KIOSK_USER=hermes ./provision/install.sh
+sudo KIOSK_USER=hermes KIOSK_HOME=/home/hermes bash provision/install.sh
 ```
 
-This configures `labwc` autologin for `hermes`, seeds `~/.local/share/kitchen-display/solar.html` (if absent), and enables both `kitchen-display.service` (scaled via `KIOSK_SCALE=1.5` for a 1280x800 logical viewport) and `kitchen-display-http.service` (serving `~/.local/share/kitchen-display/` on `:8788`). If Home Assistant credentials, `KIOSK_SCALE`, or custom URL overrides are needed, edit `~/.config/kitchen-display/env` (kept at mode `0600`).
+This installs the packages, configures `labwc` autologin for `hermes`, seeds `~/.local/share/kitchen-display/solar.html` (if absent), installs and enables both user units — `kitchen-display.service` (scaled via `KIOSK_SCALE=1.5` for a 1280x800 logical viewport) and `kitchen-display-http.service` (serving `~/.local/share/kitchen-display/` on `:8788`) — writes the 02:30 reboot units into `/etc/systemd/system` and enables the timer, then installs `~/.local/bin/sync-photos.py`, the `photoswitch` venv and the every-30-minutes photo cron line. If Home Assistant credentials, `KIOSK_SCALE`, or custom URL overrides are needed, edit `~/.config/kitchen-display/env` (kept at mode `0600`).
+
+Acceptance for this step is a **second run that changes nothing**:
+
+```bash
+sudo KIOSK_USER=hermes KIOSK_HOME=/home/hermes bash provision/install.sh   # exits 0, no unit restarts
+systemctl --user show -p MainPID --value kitchen-display.service           # same PID before/after
+systemctl list-timers kitchen-display-reboot.timer                          # same NextElapse
+git status --porcelain                                                     # empty
+```
 
 ## 4. Push the Home Assistant Dashboard
 
@@ -72,6 +81,18 @@ Run on `kitchen-display` over SSH:
    head -c 200 ~/.config/kitchen-display/url
    ```
    Confirm `http://192.168.178.84/kitchen-display/home?kiosk` loads on the display (including `Home`, `Energy` with East/West Forecast.Solar planes, and `Solar` panel webpage card at `:8788/solar.html`) and recovers automatically after `sudo reboot`.
+5. **Unattended boot**: reboot and leave it alone. After ~2 minutes the kiosk must be back with no
+   login and no keystroke (`systemctl --user is-active kitchen-display.service`,
+   `NRestarts=0`). This is the gate that matters — the panel is only "installed" if it comes back on
+   its own.
+6. **Panel watchdog** (run from the machine that holds `kitchen_panel_watch.py`):
+   ```bash
+   python3 kitchen_panel_watch.py; echo "exit=$?"
+   ```
+   Silent with `exit=0` is healthy. One line on stdout means a panel fault; `exit=2` plus stderr
+   means the check itself could not run (unreachable, no `grim`, unreadable state). The 02:30
+   restart window is the one excused failure: silence there, and a panel that has not returned by
+   the 02:45 run still exits 2.
 
 ## 6. Verify the Photo Frame
 
@@ -94,6 +115,23 @@ Run on `kitchen-display` over SSH after configuring Nextcloud credentials (`NEXT
    photo-switch hide
    ```
    Confirm `/tmp/photo-frame.png` shows the full-bleed photo slideshow (`:8788/photo.html`) and `photo-switch hide` returns to the Home Assistant dashboard.
+
+## 7. Not yet automated (needs an interactive root session)
+
+Known gaps, not runbook steps — the `sudo` drop-in in `provision/system/sudoers-020-hermes-kitchen`
+deliberately allows only `systemctl`, `systemd-analyze`, `shutdown`, `apt-get` and `apt`, so these
+need a human at a root prompt:
+
+```bash
+# K3: persistent journald, so post-reboot forensics survive a restart
+sudo mkdir -p /var/log/journal
+sudo systemd-tmpfiles --create --prefix /var/log/journal
+sudo sed -i 's/^#*Storage=.*/Storage=persistent/' /etc/systemd/journald.conf
+sudo systemctl restart systemd-journald
+```
+
+The on-panel re-run of `provision/install.sh` (§3) is pending the same kind of session. Do not widen
+the sudoers drop-in to get there.
 
 ## Network
 
