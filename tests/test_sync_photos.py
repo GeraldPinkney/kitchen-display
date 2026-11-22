@@ -8,7 +8,9 @@ import json
 import os
 import pathlib
 import random
+import re
 import socketserver
+import sys
 import threading
 import time
 
@@ -62,6 +64,9 @@ class _FakeWebDAVState:
         self.files: dict[str, bytes] = {}
         self.fail_propfind_paths: set[str] = set()
         self.propfind_calls: list[str] = []
+        # path -> queue of delays (seconds) applied to the next PROPFINDs on that path,
+        # used to provoke a real read timeout from the client side.
+        self.propfind_delays: dict[str, list[float]] = {}
         self.get_calls: list[str] = []
 
 
@@ -76,6 +81,10 @@ class _FakeWebDAVHandler(http.server.BaseHTTPRequestHandler):
         if not path.endswith("/"):
             path += "/"
         self.server.state.propfind_calls.append(path)
+
+        delays = self.server.state.propfind_delays.get(path)
+        if delays:
+            time.sleep(delays.pop(0))
 
         if path in self.server.state.fail_propfind_paths or path not in self.server.state.collections:
             self.send_response(500 if path in self.server.state.fail_propfind_paths else 404)
@@ -143,6 +152,13 @@ class _FakeWebDAVHandler(http.server.BaseHTTPRequestHandler):
 class _ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
 
+    def handle_error(self, request, client_address):
+        """A client that timed out mid-response is expected here, not a test failure."""
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+            return
+        super().handle_error(request, client_address)
+
 
 @pytest.fixture
 def webdav_server():
@@ -209,7 +225,8 @@ def test_missing_credentials_exits_2_with_single_stderr_line(sync_mod, monkeypat
     assert captured.out == ""
     lines = captured.err.strip().splitlines()
     assert len(lines) == 1
-    assert lines[0].startswith("sync-photos: ")
+    assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z sync-photos: ", lines[0])
+    assert "NEXTCLOUD_PHOTO_USER" in lines[0]
 
 
 def test_parses_propfind_fixture_xml(sync_mod, repo_root):
@@ -461,7 +478,7 @@ def test_transient_drop_over_50_percent_aborts_before_delete(sync_mod, webdav_se
     assert rc == 1
     err_lines = captured.err.strip().splitlines()
     assert len(err_lines) == 1
-    assert err_lines[0].startswith("sync-photos: ")
+    assert _TIMESTAMPED_LINE.match(err_lines[0])
     # All 4 existing slides and manifest must remain intact.
     assert len(list(dest.glob("*.jpg"))) == 4
     assert json.loads((dest / "manifest.json").read_text(encoding="utf-8"))["count"] == 4
@@ -492,8 +509,87 @@ def test_propfind_failure_aborts_before_prune(sync_mod, webdav_server, tmp_path,
     rc = sync_mod.main(["--dest", str(dest)])
     captured = capsys.readouterr()
     assert rc == 1
-    assert captured.err.strip().startswith("sync-photos: ")
+    assert _TIMESTAMPED_LINE.match(captured.err.strip())
+    assert "returned HTTP 500" in captured.err
     assert len(list(dest.glob("*.jpg"))) == 2
+
+
+# --- #30: one slow PROPFIND must not cost the whole cycle ----------------------
+
+_TIMESTAMPED_LINE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z sync-photos: ")
+
+
+@pytest.fixture
+def fast_retry(sync_mod, monkeypatch):
+    """Keep the retry path real but instant: no 25 s of backoff inside a test."""
+    monkeypatch.setattr(sync_mod, "PROPFIND_BACKOFF", (0.0, 0.0))
+
+
+def _set_photo_env(monkeypatch, base_url: str) -> None:
+    monkeypatch.setenv("NEXTCLOUD_PHOTO_URL", base_url)
+    monkeypatch.setenv("NEXTCLOUD_PHOTO_USER", "u")
+    monkeypatch.setenv("NEXTCLOUD_PHOTO_APP_PASSWORD", "p")
+
+
+def test_transient_propfind_timeout_is_retried_and_the_cycle_completes(
+    sync_mod, webdav_server, tmp_path, monkeypatch, capsys, fast_retry
+):
+    state, base_url = webdav_server
+    _seed_single_photo(state, sync_mod)
+    # The client gives up on a stalled read — the 2026-11-21 failure, made deterministic.
+    monkeypatch.setattr(sync_mod, "REQUEST_TIMEOUT", (1.0, 0.3))
+    state.propfind_delays["/Photos/"] = [0.8]
+    _set_photo_env(monkeypatch, base_url)
+
+    dest = tmp_path / "photos"
+    rc = sync_mod.main(["--dest", str(dest)])
+    captured = capsys.readouterr()
+
+    assert rc == 0, captured.err
+    assert (dest / "manifest.json").is_file(), "the cycle must complete after one retry"
+    assert state.get_calls, "the retried listing must still be used to download"
+    assert state.propfind_calls.count("/Photos/") == 2, "the retry must re-issue the listing"
+    lines = [line for line in captured.err.splitlines() if line.strip()]
+    assert len(lines) == 1, captured.err
+    assert _TIMESTAMPED_LINE.match(lines[0])
+    assert "attempt 1/3 failed" in lines[0]
+    assert "retrying in 0s" in lines[0]
+
+
+def test_persistent_propfind_timeouts_fail_after_three_attempts(
+    sync_mod, webdav_server, tmp_path, monkeypatch, capsys, fast_retry
+):
+    state, base_url = webdav_server
+    _seed_single_photo(state, sync_mod)
+    monkeypatch.setattr(sync_mod, "REQUEST_TIMEOUT", (1.0, 0.3))
+    state.propfind_delays["/Photos/"] = [0.8, 0.8, 0.8]
+    _set_photo_env(monkeypatch, base_url)
+
+    dest = tmp_path / "photos"
+    rc = sync_mod.main(["--dest", str(dest)])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert state.propfind_calls.count("/Photos/") == 3, "exactly the bounded number of attempts"
+    lines = [line for line in captured.err.splitlines() if line.strip()]
+    assert len(lines) == 3, captured.err
+    assert all(_TIMESTAMPED_LINE.match(line) for line in lines)
+    assert "failed after 3 attempts" in lines[-1]
+    assert not (dest / "manifest.json").exists(), "a failed listing must not half-write the mirror"
+
+
+def test_http_error_is_not_retried(sync_mod, webdav_server, tmp_path, monkeypatch, capsys, fast_retry):
+    state, base_url = webdav_server
+    _seed_single_photo(state, sync_mod)
+    state.fail_propfind_paths.add("/Photos/")
+    _set_photo_env(monkeypatch, base_url)
+
+    rc = sync_mod.main(["--dest", str(tmp_path / "photos")])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert state.propfind_calls.count("/Photos/") == 1, "a 500 will not fix itself in a minute"
+    assert "returned HTTP 500" in captured.err
 
 
 def test_dry_run_prints_changes_and_writes_nothing(sync_mod, webdav_server, tmp_path, monkeypatch, capsys):
@@ -693,7 +789,7 @@ def test_three_of_five_corrupted_aborts_and_leaves_prior_manifest_intact(
     rc = sync_mod.main(["--dest", str(dest)])
     captured = capsys.readouterr()
     assert rc == 1
-    assert captured.err.strip().startswith("sync-photos: ")
+    assert _TIMESTAMPED_LINE.match(captured.err.strip())
     assert (dest / "manifest.json").read_bytes() == manifest_before
     assert {p.name: p.stat().st_mtime_ns for p in dest.glob("*.jpg")} == slides_before
 

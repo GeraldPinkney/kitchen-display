@@ -26,6 +26,11 @@ DEFAULT_DEST_DIR = pathlib.Path.home() / ".local" / "share" / "kitchen-display" 
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
 SKIPPED_LOG_EXTENSION = ".heic"
 REQUEST_TIMEOUT = (10, 60)
+# One PROPFIND that times out used to cost a whole 30-minute cycle (see #30). The
+# listing is read-only and idempotent, so a transient stall is worth retrying; an
+# HTTP error is not — a 401/404/507 will not fix itself inside a minute.
+PROPFIND_ATTEMPTS = 3
+PROPFIND_BACKOFF = (5.0, 20.0)
 STALE_TMP_SECONDS = 3600
 MAX_ERROR_FRACTION = 0.20
 RENDER_MANIFEST_NAME = ".render-manifest.json"
@@ -70,6 +75,45 @@ PROPFIND_BODY = (
 
 class SyncError(Exception):
     """Raised when WebDAV listing, download, or safety checks fail."""
+
+
+def _log(message: str) -> None:
+    """Write one timestamped line to stderr — cron redirects this into photo-sync.log.
+
+    The log is append-only, so without a stamp the only evidence of *when* a run
+    failed was the file mtime, which the next failure overwrote.
+    """
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"{stamp} sync-photos: {message}", file=sys.stderr)
+
+
+def _propfind(session: requests.Session, url: str, headers: Mapping[str, str]):
+    """Depth: 1 PROPFIND with bounded retries on transient network failures.
+
+    Retries only requests.RequestException (timeouts, refused/reset connections,
+    DNS): the listing is idempotent, so repeating it is safe. An HTTP status
+    outside 200/207 is returned to the caller untouched — retrying a 401 or a 404
+    just delays the same answer.
+    """
+    last_exc: requests.RequestException | None = None
+    for attempt in range(1, PROPFIND_ATTEMPTS + 1):
+        try:
+            return session.request(
+                "PROPFIND", url, headers=headers, data=PROPFIND_BODY, timeout=REQUEST_TIMEOUT
+            )
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt == PROPFIND_ATTEMPTS:
+                break
+            delay = PROPFIND_BACKOFF[min(attempt - 1, len(PROPFIND_BACKOFF) - 1)]
+            _log(
+                f"PROPFIND {url} attempt {attempt}/{PROPFIND_ATTEMPTS} failed "
+                f"({exc.__class__.__name__}: {exc}); retrying in {delay:g}s"
+            )
+            time.sleep(delay)
+    raise SyncError(
+        f"PROPFIND {url} failed after {PROPFIND_ATTEMPTS} attempts: {last_exc}"
+    ) from last_exc
 
 
 @dataclass(frozen=True)
@@ -228,10 +272,7 @@ def list_remote_photos(session: requests.Session, base_url: str) -> tuple[list[R
             continue
         visited.add(norm_path)
 
-        try:
-            resp = session.request("PROPFIND", col_url, headers=headers, data=PROPFIND_BODY, timeout=REQUEST_TIMEOUT)
-        except requests.RequestException as exc:
-            raise SyncError(f"PROPFIND {col_url} failed: {exc}") from exc
+        resp = _propfind(session, col_url, headers)
 
         if resp.status_code not in (200, 207):
             raise SyncError(f"PROPFIND {col_url} returned HTTP {resp.status_code}")
@@ -587,8 +628,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         base_url, user, password = _require_env()
     except ValueError as exc:
-        msg = str(exc).replace("\n", " ")
-        print(f"sync-photos: {msg}", file=sys.stderr)
+        _log(str(exc).replace("\n", " "))
         return 2
 
     try:
@@ -598,8 +638,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(line)
         return 0
     except Exception as exc:
-        msg = str(exc).replace("\n", " ")
-        print(f"sync-photos: {msg}", file=sys.stderr)
+        _log(str(exc).replace("\n", " "))
         return 1
 
 
