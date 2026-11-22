@@ -109,6 +109,12 @@ def test_print_emits_a_shell_quoted_command_line(policy, capsys):
     assert "'wlopm --off '\"'\"'*'\"'\"''" in printed, printed
 
 
+def test_run_flag_is_accepted_by_the_unit_entry_point(policy, monkeypatch):
+    """The unit runs `swayidle-policy --run`; argparse must take it or the policy never starts."""
+    monkeypatch.setattr(policy, "run", lambda: 7)
+    assert policy.main(["--run"]) == 7
+
+
 def test_loop_rearms_across_the_evening_edge_and_replaces_swayidle(policy):
     clock = FakeClock(dt.datetime(2026, 11, 22, 21, 50, 0))
     spawned: list[FakeProc] = []

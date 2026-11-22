@@ -161,6 +161,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="print the swayidle command line for --now (or the wall clock) and exit",
     )
     parser.add_argument(
+        "--run",
+        action="store_true",
+        help="arm swayidle and re-arm at each window edge (what the systemd unit runs)",
+    )
+    parser.add_argument(
         "--now",
         metavar="ISO",
         help="evaluate this local ISO time instead of the wall clock (inspection only)",
