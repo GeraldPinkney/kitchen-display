@@ -3,9 +3,10 @@
 Living checkpoint for the K1–K12 hardening work. Update this file whenever a
 component closes or a gate passes; do not keep status in chat only.
 
-Last updated: 2026-11-20, after the photo frame landed on `main` (PR #22), the 02:30
-reboot was observed for the first time (boot 02:31), and the installer stopped
-writing its own reboot schedule (PR #23).
+Last updated: 2026-11-26, after the photo producer cutover was scoped as **P3 (#33)**:
+`photo_app` becomes the only writer of the deck and the legacy `sync-photos.py` pipeline
+is retired in four gated phases. Nothing has moved on the panel yet — the legacy writer
+is still the live producer until P3 phase 2.
 
 ## Board of record
 
@@ -26,6 +27,9 @@ work-tracking rule in `AGENTS.md`).
 | #10 Polish, docs, v1.0 | README, docs, tag |
 | #17 Photo frame selection/day order (P1 shipped) | photo frame content rules |
 | #18 Face-aware selection (deferred) | P4 of #17 |
+| #33 P3 producer cutover (open) | cut over to `photo_app` on dockerpi, retire the legacy sync pipeline |
+| #29 P2 rotation state (open, superseded by #33) | state now lives in `photo_app`'s display history |
+| #30 photo-sync PROPFIND timeout (open, superseded by #33) | fixed upstream in `photo_app` #30; tool deleted in P3 phase 3 |
 
 Closed: #1 hardware, #2 repo prep, #3 solar page, #7 display toggle, #9 power draw
 (not planned — the smart plug was dropped as K12), #12 solar embed, #13, #14 (owner
@@ -42,6 +46,9 @@ verified blank/wake after 60 min idle), #16 provisioning split, #20 battery tile
   (from `~/.local/share/kitchen-display/solar.html`).
 - Photo frame: `http://127.0.0.1:8788/photo.html`, shown by `photo-switch show` after
   5 min idle, hidden on touch.
+- Photo deck: `~/.local/share/kitchen-display/photos/` (`manifest.json` + `*.jpg`).
+  **Written every 30 min by `sync-photos.py` today**; after P3 (#33) the only writer is
+  `photo_app` on dockerpi. Two writers must never run at once — the last one wins.
 - Repo: `/opt/data/kitchen-display` (branch `main`), and a read-only checkout on the
   Pi at `~/kitchen-display` (added 2026-11-20 for the K7 rebuild, kept for
   `git pull` + `provision/install.sh` re-runs).
@@ -64,6 +71,7 @@ verified blank/wake after 60 min idle), #16 provisioning split, #20 battery tile
 | K10 | Network policy | **DONE** (WiFi-only is the design, documented in `install.md`) | #4 |
 | K11 | Optional kiosk chrome (`?kiosk` header/sidebar) | **OPEN** (#26) — `?kiosk` is inert today, chrome still visible | #26 |
 | K12 | Smart plug | **DROPPED** (owner deferred, do not resurface unprompted) | #9 |
+| P3 | Photo producer cutover to `photo_app` | **PLANNED** — legacy `sync-photos.py` is still the live writer; gated on `photo_app` #29/#30/#31 | #33 |
 
 ## K2 gate: the evidence that closed it
 
@@ -177,6 +185,43 @@ Forced-failure test (the card's acceptance), run through the deployed shim:
 Exit 2 is reserved for "the check could not run" (ssh failure, no grim, unreadable
 state) and writes to stderr, so a broken watchdog never looks like a healthy panel.
 
+## P3 gate: photo producer cutover (#33) — planned, nothing moved yet
+
+`photo_app` (running on dockerpi) becomes the only writer of `photos/`; the kiosk page,
+`photo-switch`, the `:8788` server and screen-off stay here untouched. Verified before
+scoping: `photo_app` produced **215 slides** from the same library the legacy pipeline
+turns into 214, in 7.4 min at 268 MB peak RSS, and the **unmodified** `photo.html` served
+that deck and cycled it at 30 s.
+
+Four phases, each with an exit gate (detail on the card):
+
+1. **Preflight** — `photo_app` #29 (refuse empty/shrunken deck), #30 (tolerate 403/404
+   subtrees), #31 (schedule + silent-on-success wrapper + alert) merged; image pinned by
+   digest; dockerpi data dir on a daemon-readable path (a `/opt/data` bind fails on the
+   rootless daemon); GHCR `read:packages`; SSH key + `known_hosts`.
+2. **Shadow deck** — publish into `~/.local/share/kitchen-display/staging/photos/` with a
+   copy of `photo.html` at `staging/index.html` (the page resolves `photos/manifest.json`
+   relative to itself). View at `http://192.168.178.56:8788/staging/index.html`. Zero risk
+   to the live deck; owner accepts the content here.
+3. **Flip** — snapshot `photos/` and the crontab to `~/rollback/`, comment the `*/30` cron
+   (do not delete), gate `install.sh` steps 9–10 behind a flag so a rebuild cannot re-arm
+   it, then one supervised publish with `--remote-target` + `--verify-url` and only then
+   the 03:15 schedule.
+4. **Decommission** — remove the cron and staging deck, delete
+   `tools/{sync_photos,photo_select,photo_format,photo_cache}.py` and their tests, close
+   #29/#30 as superseded.
+
+Exit gate for the flip: **24 h** with `photo_app`'s `generated_at` still in place,
+`photo-sync.log` not growing, and a forced publish failure delivering one alert line.
+
+    ssh hermes@192.168.178.56 'crontab -l'                       # legacy line commented out
+    curl -s http://127.0.0.1:8788/photos/manifest.json | jq .generated_at
+    ssh hermes@192.168.178.56 'stat -c "%y %s" ~/.local/state/kitchen-display/photo-sync.log'
+
+Rollback: `crontab ~/rollback/crontab-<date>.txt` (legacy rebuilds its own manifest within
+30 min) and, if the deck was damaged, `tar xzf ~/rollback/photos-<date>.tar.gz -C
+~/.local/share/kitchen-display`. Stop `photo_app`'s schedule first — never two writers.
+
 ## Verified evidence (re-runnable)
 
 - Suite: `cd /opt/data/kitchen-display && /opt/data/venvs/kitchen-tests/bin/python -m pytest -o cache_dir=/opt/data/cache/scratch/pytest-cache -q`
@@ -249,15 +294,17 @@ and manage units, not to become root.
 
 ## Next actions, in order
 
-1. K9 (#11): deploy the health cron — implementation, shim + allowlist entry, cron job,
-   then the forced-failure test on the card.
-2. Owner: the root block above, starting with the K7 re-run (it unblocks the "rebuild
+1. P3 (#33): land `photo_app` #29–#31, then phase 1 (shadow deck) — nothing user-visible
+   until phase 2, and no cron change before the snapshots exist.
+2. K9 (#11): close the card — the cron is deployed and the forced-failure test is
+   recorded above.
+3. Owner: the root block above, starting with the K7 re-run (it unblocks the "rebuild
    reproduces the panel" claim).
-3. K3 (#8): journald persistence, then re-read the reboot evidence.
-4. K11 (#26): decide whether the visible sidebar/header matters; close the card either
+4. K3 (#8): journald persistence, then re-read the reboot evidence.
+5. K11 (#26): decide whether the visible sidebar/header matters; close the card either
    way.
-5. #5: owner confirms the physical mount, then it closes.
-6. #10: README + BOM + tag `v1.0` once the above are closed.
+6. #5: owner confirms the physical mount, then it closes.
+7. #10: README + BOM + tag `v1.0` once the above are closed.
 
 ## Backups and scratch
 
