@@ -195,6 +195,14 @@ the `:8788` server and screen-off were not touched. The legacy `*/30 sync-photos
 is gone from the panel and `provision/install.sh` steps 9-10 are gated behind
 `INSTALL_LEGACY_PHOTO_SYNC=1`, with the default path also stripping a leftover cron line.
 
+The split of responsibilities, the manifest fields the kiosk is allowed to read, and the
+procedure for changing that contract are documented in `photo_app`, not here:
+[docs/boundary.md](https://github.com/GeraldPinkney/photo_app/blob/main/docs/boundary.md) is
+the source of truth for "where does this change belong?". Consequence for this repo:
+`tools/{sync_photos,photo_select,photo_format,photo_cache}.py` are **deprecated on cutover** —
+read-only history until P3 phase 3 (#33) deletes them. Do not add features, fixes or tests to
+them; make the change in `photo_app` or open an issue here for the kiosk/serving side.
+
 What actually ran (measured, 2026-11-27):
 
 - Image `ghcr.io/geraldpinkney/photo_app@sha256:9eac7187…` (`sha-c8ba786`, multi-arch),
