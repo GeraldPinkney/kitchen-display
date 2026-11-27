@@ -42,6 +42,7 @@ def test_dry_run_succeeds_and_plans_every_component(repo_root):
     out = (proc.stdout + proc.stderr).lower()
     for needle in ("apt", "chromium", "swayidle", "wlopm", "kanshi",
                    "kitchen-display.service", "kitchen-display-http.service",
+                   "kitchen-idle-policy.service", "swayidle-policy",
                    ".local/share/kitchen-display", "autostart", "reboot",
                    "sync-photos.py", "photo-switch", "photo.html",
                    "photoswitch", "websockets", "*/30"):
@@ -278,3 +279,25 @@ def test_dry_run_names_the_0230_reboot_units(repo_root):
     out = (proc.stdout + proc.stderr).lower()
     assert "02:30" in out
     assert "kitchen-display-reboot.timer" in out
+
+
+
+def test_staged_installer_ships_the_idle_policy(repo_root, tmp_path):
+    """#32: the unit, the script and an autostart that no longer runs swayidle."""
+    proc, temp_home = _stage_and_run_installer(repo_root, tmp_path)
+    assert proc.returncode == 0, proc.stderr
+
+    script = temp_home / ".local" / "bin" / "swayidle-policy"
+    assert script.is_file(), f"missing installed swayidle-policy in {script.parent}"
+    assert script.read_text() == (repo_root / "tools" / "swayidle_policy.py").read_text()
+    assert script.stat().st_mode & 0o111, "swayidle-policy must be executable"
+
+    unit_dir = temp_home / ".config" / "systemd" / "user"
+    unit = unit_dir / "kitchen-idle-policy.service"
+    assert unit.is_file(), f"missing installed unit in {unit_dir}"
+    assert unit.read_text() == (repo_root / "kiosk" / "kitchen-idle-policy.service").read_text()
+    assert (unit_dir / "graphical-session.target.wants" / "kitchen-idle-policy.service").exists()
+
+    autostart = (temp_home / ".config" / "labwc" / "autostart").read_text()
+    assert "kitchen-idle-policy.service" in autostart, autostart
+    assert "swayidle -w" not in autostart, "the installer must not seed a stale inline swayidle"
