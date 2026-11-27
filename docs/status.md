@@ -3,10 +3,11 @@
 Living checkpoint for the K1–K12 hardening work. Update this file whenever a
 component closes or a gate passes; do not keep status in chat only.
 
-Last updated: 2026-11-26, after the photo producer cutover was scoped as **P3 (#33)**:
-`photo_app` becomes the only writer of the deck and the legacy `sync-photos.py` pipeline
-is retired in four gated phases. Nothing has moved on the panel yet — the legacy writer
-is still the live producer until P3 phase 2.
+Last updated: 2026-11-27, after the **P3 flip**: `photo_app` on dockerpi is the only writer
+of the photo deck, the legacy `sync-photos.py` cron is gone from the panel, and
+`provision/install.sh` no longer re-arms it (steps 9-10 are gated behind
+`INSTALL_LEGACY_PHOTO_SYNC=1`). Remaining: enable the publish timer, add the Kuma push
+monitor, then P3 phase 3 (delete the legacy tools).
 
 ## Board of record
 
@@ -27,9 +28,9 @@ work-tracking rule in `AGENTS.md`).
 | #10 Polish, docs, v1.0 | README, docs, tag |
 | #17 Photo frame selection/day order (P1 shipped) | photo frame content rules |
 | #18 Face-aware selection (deferred) | P4 of #17 |
-| #33 P3 producer cutover (open) | cut over to `photo_app` on dockerpi, retire the legacy sync pipeline |
-| #29 P2 rotation state (open, superseded by #33) | state now lives in `photo_app`'s display history |
-| #30 photo-sync PROPFIND timeout (open, superseded by #33) | fixed upstream in `photo_app` #30; tool deleted in P3 phase 3 |
+| #33 P3 producer cutover (phase 2 done) | cut over to `photo_app` on dockerpi, retire the legacy sync pipeline |
+| #29 P2 rotation state (closed, superseded by #33) | state now lives in `photo_app`'s display history |
+| #30 photo-sync PROPFIND timeout (closed, superseded by #33) | fixed upstream in `photo_app` #30; tool deleted in P3 phase 3 |
 
 Closed: #1 hardware, #2 repo prep, #3 solar page, #7 display toggle, #9 power draw
 (not planned — the smart plug was dropped as K12), #12 solar embed, #13, #14 (owner
@@ -47,8 +48,10 @@ verified blank/wake after 60 min idle), #16 provisioning split, #20 battery tile
 - Photo frame: `http://127.0.0.1:8788/photo.html`, shown by `photo-switch show` after
   5 min idle, hidden on touch.
 - Photo deck: `~/.local/share/kitchen-display/photos/` (`manifest.json` + `*.jpg`).
-  **Written every 30 min by `sync-photos.py` today**; after P3 (#33) the only writer is
-  `photo_app` on dockerpi. Two writers must never run at once — the last one wins.
+  **Written only by `photo_app` on dockerpi** (nightly publish, verify-url + rsync). The
+  panel stopped producing it on 2026-11-27; the legacy `*/30 sync-photos.py` cron was
+  removed and `install.sh` strips it if it ever reappears. Never run two writers at once —
+  the last one wins.
 - Repo: `/opt/data/kitchen-display` (branch `main`), and a read-only checkout on the
   Pi at `~/kitchen-display` (added 2026-11-20 for the K7 rebuild, kept for
   `git pull` + `provision/install.sh` re-runs).
@@ -71,7 +74,7 @@ verified blank/wake after 60 min idle), #16 provisioning split, #20 battery tile
 | K10 | Network policy | **DONE** (WiFi-only is the design, documented in `install.md`) | #4 |
 | K11 | Optional kiosk chrome (`?kiosk` header/sidebar) | **OPEN** (#26) — `?kiosk` is inert today, chrome still visible | #26 |
 | K12 | Smart plug | **DROPPED** (owner deferred, do not resurface unprompted) | #9 |
-| P3 | Photo producer cutover to `photo_app` | **PLANNED** — legacy `sync-photos.py` is still the live writer; gated on `photo_app` #29/#30/#31 | #33 |
+| P3 | Photo producer cutover to `photo_app` | **PHASE 2 DONE** — `photo_app` is the only writer (216 slides, 2026-11-27 13:19Z); timer + Kuma pending; phase 3 deletes the legacy tools | #33 |
 
 ## K2 gate: the evidence that closed it
 
@@ -185,47 +188,48 @@ Forced-failure test (the card's acceptance), run through the deployed shim:
 Exit 2 is reserved for "the check could not run" (ssh failure, no grim, unreadable
 state) and writes to stderr, so a broken watchdog never looks like a healthy panel.
 
-## P3 gate: photo producer cutover (#33) — planned, nothing moved yet
+## P3 gate: photo producer flip (#33) — flipped 2026-11-27
 
-`photo_app` (running on dockerpi) becomes the only writer of `photos/`; the kiosk page,
-`photo-switch`, the `:8788` server and screen-off stay here untouched. Verified before
-scoping: `photo_app` produced **215 slides** from the same library the legacy pipeline
-turns into 214, in 7.4 min at 268 MB peak RSS, and the **unmodified** `photo.html` served
-that deck and cycled it at 30 s.
+`photo_app` (on dockerpi) is the only writer of `photos/`; the kiosk page, `photo-switch`,
+the `:8788` server and screen-off were not touched. The legacy `*/30 sync-photos.py` cron
+is gone from the panel and `provision/install.sh` steps 9-10 are gated behind
+`INSTALL_LEGACY_PHOTO_SYNC=1`, with the default path also stripping a leftover cron line.
 
-Four phases, each with an exit gate (detail on the card):
+What actually ran (measured, 2026-11-27):
 
-1. **Preflight** — `photo_app` #29 (refuse empty/shrunken deck), #30 (tolerate 403/404
-   subtrees), #31 (schedule + silent-on-success wrapper + alert) merged; image pinned by
-   digest; dockerpi data dir on a daemon-readable path (a `/opt/data` bind fails on the
-   rootless daemon); GHCR `read:packages`; SSH key + `known_hosts`.
-2. **Shadow deck** — publish into `~/.local/share/kitchen-display/staging/photos/` with a
-   copy of `photo.html` at `staging/index.html` (the page resolves `photos/manifest.json`
-   relative to itself). View at `http://192.168.178.56:8788/staging/index.html`. Zero risk
-   to the live deck; owner accepts the content here.
-3. **Flip** — snapshot `photos/` and the crontab to `~/rollback/`, comment the `*/30` cron
-   (do not delete), gate `install.sh` steps 9–10 behind a flag so a rebuild cannot re-arm
-   it, then one supervised publish with `--remote-target` + `--verify-url` and only then
-   the 03:15 schedule.
-4. **Decommission** — remove the cron and staging deck, delete
-   `tools/{sync_photos,photo_select,photo_format,photo_cache}.py` and their tests, close
-   #29/#30 as superseded.
+- Image `ghcr.io/geraldpinkney/photo_app@sha256:9eac7187…` (`sha-c8ba786`, multi-arch),
+  pinned by digest in `~/photo-app/.env` on dockerpi.
+- `data/` seeded from the previous `photo_app_data` volume (362 MB catalog + render cache)
+  so publication history and renders carried over.
+- Staged build: `Published 221 slide(s)` (`rendered=51, reused=170, pruned=45`), `errors: []`,
+  440 discovered / 420 admitted, same reject classes as the legacy pipeline.
+- Supervised push: `Published 216 slide(s)` (`rendered=41, reused=175, pruned=46`), exit 0.
+- Live deck after the push: schema 2, `count: 216`,
+  `generated_at 2026-11-27T13:19:37Z`, `errors: []`, 216 `.jpg`, 0 unresolved manifest
+  references, `:8788` 200 on sampled slides, and the unmodified `photo.html` cycles the new
+  deck at 30 s with the `?v=` cache-bust.
+- Rollback material kept: `~/.local/state/kitchen-display/backups/crontab-20261127T131915Z.txt`
+  and `manifest-20261127T131915Z.json` on the panel.
 
-Exit gate for the flip: **24 h** with `photo_app`'s `generated_at` still in place,
-`photo-sync.log` not growing, and a forced publish failure delivering one alert line.
+Exit gate before phase 3 (delete `tools/{sync_photos,photo_select,photo_format,photo_cache}.py`):
+24 h with the `photo_app` `generated_at` still the newest manifest write, `photo-sync.log`
+not growing, one publish delivered by the timer (not by hand), and a forced failure
+delivering exactly one Kuma "down" ping.
 
-    ssh hermes@192.168.178.56 'crontab -l'                       # legacy line commented out
-    curl -s http://127.0.0.1:8788/photos/manifest.json | jq .generated_at
+    curl -s http://127.0.0.1:8788/photos/manifest.json | jq '{count, generated_at, errors}'
     ssh hermes@192.168.178.56 'stat -c "%y %s" ~/.local/state/kitchen-display/photo-sync.log'
+    ssh hermes@192.168.178.56 'crontab -l'          # must not list sync-photos.py
+    docker run --rm -v /home/gerald/photo-app:/w -w /w alpine tail -5 logs/last-run.log
 
-Rollback: `crontab ~/rollback/crontab-<date>.txt` (legacy rebuilds its own manifest within
-30 min) and, if the deck was damaged, `tar xzf ~/rollback/photos-<date>.tar.gz -C
-~/.local/share/kitchen-display`. Stop `photo_app`'s schedule first — never two writers.
+Rollback: restore the crontab backup on the panel (`crontab <file>`) and run
+`~/.local/bin/sync-photos.py` once — it rebuilds its own manifest within a cycle. Stop the
+`photo-app-publish.timer` first; never two writers.
 
 ## Verified evidence (re-runnable)
 
 - Suite: `cd /opt/data/kitchen-display && /opt/data/venvs/kitchen-tests/bin/python -m pytest -o cache_dir=/opt/data/cache/scratch/pytest-cache -q`
-  → 168 passed, 2 skipped (2026-11-20, after PR #23).
+  → 168 passed, 2 skipped (2026-11-20, after PR #23); 195 passed, 2 skipped
+  (2026-11-27, after PR #31 rebased onto main and the `install.sh` producer gate).
 - Live dashboard check: `tools/dashboard_check.py --live` → rc=0.
 - Solar view embed (#12), measured over CDP at 1280x800: one iframe, src
   `http://192.168.178.56:8788/solar.html`, `errors: []`. The card is a shadow-DOM
@@ -294,8 +298,9 @@ and manage units, not to become root.
 
 ## Next actions, in order
 
-1. P3 (#33): land `photo_app` #29–#31, then phase 1 (shadow deck) — nothing user-visible
-   until phase 2, and no cron change before the snapshots exist.
+1. P3 (#33): owner acceptance of the flipped deck, then `systemctl --user enable --now
+   photo-app-publish.timer` on dockerpi, the Kuma push monitor, and the 24 h exit gate
+   before phase 3 deletes the legacy tools.
 2. K9 (#11): close the card — the cron is deployed and the forced-failure test is
    recorded above.
 3. Owner: the root block above, starting with the K7 re-run (it unblocks the "rebuild

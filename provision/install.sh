@@ -20,6 +20,10 @@ STATE_DIR="${KIOSK_HOME}/.local/state/kitchen-display"
 VENVS_DIR="${KIOSK_HOME}/.local/venvs"
 PHOTOSWITCH_VENV="${VENVS_DIR}/photoswitch"
 CRON_LINE='*/30 * * * * $HOME/.local/bin/sync-photos.py >> $HOME/.local/state/kitchen-display/photo-sync.log 2>&1'
+# P3 (#33): the legacy photo producer is retired. photo_app publishes the deck from
+# dockerpi and this host only reads it, so a rebuild must never re-arm the 30-minute
+# sync cron. INSTALL_LEGACY_PHOTO_SYNC=1 provisions the old pipeline on purpose.
+LEGACY_PHOTO_SYNC="${INSTALL_LEGACY_PHOTO_SYNC:-0}"
 ENV_FILE="${CONFIG_DIR}/env"
 URL_FILE="${CONFIG_DIR}/url"
 LAUNCHER_DEST="${CONFIG_DIR}/launch_kiosk.sh"
@@ -46,6 +50,14 @@ if [[ "${1:-}" == "--dry-run" ]]; then
     DRY_RUN=1
 fi
 
+if [[ "${LEGACY_PHOTO_SYNC}" == "1" ]]; then
+    PLAN_9="Install photo-frame scripts (${SYNC_PHOTOS_DEST}, ${BIN_DIR}/photo_select.py, ${BIN_DIR}/photo_format.py, ${BIN_DIR}/photo_cache.py, ${PHOTO_SWITCH_DEST}), idle policy (${SWAYIDLE_POLICY_DEST}), page (${PHOTO_HTML_DEST}), dirs (${PHOTOS_DIR}, ${STATE_DIR}), and venv (${PHOTOSWITCH_VENV} with websockets)"
+    PLAN_10="Add user cron entry for ${KIOSK_USER}: ${CRON_LINE}"
+else
+    PLAN_9="Install photo page (${PHOTO_HTML_DEST}), photo-switch (${PHOTO_SWITCH_DEST}), idle policy (${SWAYIDLE_POLICY_DEST}), dirs (${PHOTOS_DIR}, ${STATE_DIR}), and venv (${PHOTOSWITCH_VENV} with websockets); legacy sync tools are retired because photo_app publishes the deck from dockerpi (INSTALL_LEGACY_PHOTO_SYNC=1 restores sync-photos.py, photo_select.py, photo_format.py, photo_cache.py)"
+    PLAN_10="Leave the photo sync cron disabled for ${KIOSK_USER} and remove any sync-photos.py entry: the photo_app timer on dockerpi is the producer"
+fi
+
 print_plan() {
     cat <<EOF
 [plan] 1. Install apt packages: ${PACKAGES[*]}
@@ -56,8 +68,8 @@ print_plan() {
 [plan] 6. Install systemd user units kitchen-display.service (${USER_UNIT_DEST}), kitchen-display-http.service (${HTTP_UNIT_DEST}) and kitchen-idle-policy.service (${IDLE_UNIT_DEST}) and enable linger
 [plan] 7. Install labwc autostart entry to ${AUTOSTART_DEST}
 [plan] 8. Install the nightly 02:30 reboot units (kitchen-display-reboot.service, kitchen-display-reboot.timer) from provision/system/ and enable the timer
-[plan] 9. Install photo-frame scripts (${SYNC_PHOTOS_DEST}, ${BIN_DIR}/photo_select.py, ${BIN_DIR}/photo_format.py, ${BIN_DIR}/photo_cache.py, ${PHOTO_SWITCH_DEST}), idle policy (${SWAYIDLE_POLICY_DEST}), page (${PHOTO_HTML_DEST}), dirs (${PHOTOS_DIR}, ${STATE_DIR}), and venv (${PHOTOSWITCH_VENV} with websockets)
-[plan] 10. Add user cron entry for ${KIOSK_USER}: ${CRON_LINE}
+[plan] 9. ${PLAN_9}
+[plan] 10. ${PLAN_10}
 EOF
 }
 
@@ -222,20 +234,22 @@ systemctl daemon-reload
 systemctl enable --now kitchen-display-reboot.timer
 
 # 9. Install photo-frame scripts, page, data/state dirs, and photoswitch venv.
-for mod in sync_photos.py photo_select.py photo_format.py photo_cache.py; do
-    [[ -f "${REPO_ROOT}/tools/${mod}" ]] || { echo "Error: missing photo-sync module ${REPO_ROOT}/tools/${mod}" >&2; exit 1; }
-done
 install -d -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" "${BIN_DIR}" "${PHOTOS_DIR}" "${STATE_DIR}" "${VENVS_DIR}"
-if [[ ! -f "${SYNC_PHOTOS_DEST}" ]] || ! cmp -s "${REPO_ROOT}/tools/sync_photos.py" "${SYNC_PHOTOS_DEST}"; then
-    install -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
-        "${REPO_ROOT}/tools/sync_photos.py" "${SYNC_PHOTOS_DEST}"
-fi
-for mod in photo_select.py photo_format.py photo_cache.py; do
-    if [[ ! -f "${BIN_DIR}/${mod}" ]] || ! cmp -s "${REPO_ROOT}/tools/${mod}" "${BIN_DIR}/${mod}"; then
-        install -m 0644 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
-            "${REPO_ROOT}/tools/${mod}" "${BIN_DIR}/${mod}"
+if [[ "${LEGACY_PHOTO_SYNC}" == "1" ]]; then
+    for mod in sync_photos.py photo_select.py photo_format.py photo_cache.py; do
+        [[ -f "${REPO_ROOT}/tools/${mod}" ]] || { echo "Error: missing photo-sync module ${REPO_ROOT}/tools/${mod}" >&2; exit 1; }
+    done
+    if [[ ! -f "${SYNC_PHOTOS_DEST}" ]] || ! cmp -s "${REPO_ROOT}/tools/sync_photos.py" "${SYNC_PHOTOS_DEST}"; then
+        install -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
+            "${REPO_ROOT}/tools/sync_photos.py" "${SYNC_PHOTOS_DEST}"
     fi
-done
+    for mod in photo_select.py photo_format.py photo_cache.py; do
+        if [[ ! -f "${BIN_DIR}/${mod}" ]] || ! cmp -s "${REPO_ROOT}/tools/${mod}" "${BIN_DIR}/${mod}"; then
+            install -m 0644 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
+                "${REPO_ROOT}/tools/${mod}" "${BIN_DIR}/${mod}"
+        fi
+    done
+fi
 if [[ ! -f "${PHOTO_SWITCH_DEST}" ]] || ! cmp -s "${REPO_ROOT}/tools/photo_switch.py" "${PHOTO_SWITCH_DEST}"; then
     install -m 0755 -o "${KIOSK_USER}" -g "${KIOSK_GROUP}" \
         "${REPO_ROOT}/tools/photo_switch.py" "${PHOTO_SWITCH_DEST}"
@@ -261,13 +275,24 @@ if [[ ! -x "${PHOTOSWITCH_VENV}/bin/python" ]] || ! "${PHOTOSWITCH_VENV}/bin/pyt
     chown -R "${KIOSK_USER}:${KIOSK_GROUP}" "${PHOTOSWITCH_VENV}"
 fi
 
-# 10. Install user cron entry once for periodic photo sync.
+# 10. Photo sync cron: only for the legacy producer. The default path also strips a
+#     leftover entry, so a rebuild on a cut-over Pi cannot re-arm sync-photos.py.
 EXISTING_CRON="$(crontab -u "${KIOSK_USER}" -l 2>/dev/null || true)"
-if ! printf '%s\n' "${EXISTING_CRON}" | grep -Fq 'sync-photos.py'; then
-    {
-        if [[ -n "${EXISTING_CRON}" ]]; then
-            printf '%s\n' "${EXISTING_CRON}"
-        fi
-        printf '%s\n' "${CRON_LINE}"
-    } | crontab -u "${KIOSK_USER}" -
+if [[ "${LEGACY_PHOTO_SYNC}" == "1" ]]; then
+    if ! printf '%s\n' "${EXISTING_CRON}" | grep -Fq 'sync-photos.py'; then
+        {
+            if [[ -n "${EXISTING_CRON}" ]]; then
+                printf '%s\n' "${EXISTING_CRON}"
+            fi
+            printf '%s\n' "${CRON_LINE}"
+        } | crontab -u "${KIOSK_USER}" -
+    fi
+else
+    if printf '%s\n' "${EXISTING_CRON}" | grep -Fq 'sync-photos.py'; then
+        # grep -Fv exits 1 when every line matched; keep pipefail happy and still
+        # install the (possibly empty) remainder.
+        KEPT_CRON="$(printf '%s\n' "${EXISTING_CRON}" | grep -Fv 'sync-photos.py' || true)"
+        printf '%s\n' "${KEPT_CRON}" | crontab -u "${KIOSK_USER}" -
+        echo "Removed the legacy sync-photos.py cron entry for ${KIOSK_USER} (photo_app is the producer)."
+    fi
 fi
