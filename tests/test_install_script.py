@@ -23,10 +23,10 @@ def script_path(repo_root):
     return p
 
 
-def run_dry(repo_root):
+def run_dry(repo_root, env=None):
     return subprocess.run(
         ["/bin/bash", str(script_path(repo_root)), "--dry-run"],
-        capture_output=True, text=True, timeout=60, cwd=str(repo_root),
+        capture_output=True, text=True, timeout=60, cwd=str(repo_root), env=env,
     )
 
 
@@ -44,15 +44,36 @@ def test_dry_run_succeeds_and_plans_every_component(repo_root):
                    "kitchen-display.service", "kitchen-display-http.service",
                    "kitchen-idle-policy.service", "swayidle-policy",
                    ".local/share/kitchen-display", "autostart", "reboot",
-                   "sync-photos.py", "photo-switch", "photo.html",
-                   "photoswitch", "websockets", "*/30"):
+                   "photo-switch", "photo.html",
+                   "photoswitch", "websockets"):
         assert needle in out, f"dry-run output does not mention {needle}:\n{proc.stdout}"
 
 
-def test_install_has_no_sudo_and_ships_photo_frame_cron_idempotently(repo_root):
+def test_dry_run_default_plan_retires_the_legacy_producer(repo_root):
+    proc = run_dry(repo_root)
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
+    assert "sync-photos.py" in out, "the plan must say what it is NOT installing"
+    assert "photo_app publishes the deck" in out
+    assert "*/30" not in out, "default plan must not schedule the legacy cron"
+    assert "Add user cron entry" not in out
+
+
+def test_dry_run_legacy_flag_restores_the_old_plan(repo_root):
+    env = dict(os.environ, INSTALL_LEGACY_PHOTO_SYNC="1")
+    proc = run_dry(repo_root, env=env)
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
+    assert "*/30" in out and "sync-photos.py" in out
+    for _src, dest in PHOTO_SYNC_SOURCES:
+        assert dest in out
+
+
+def test_install_has_no_sudo_and_gates_the_legacy_cron(repo_root):
     body = script_path(repo_root).read_text()
     assert "sudo " not in body
     assert '*/30 * * * * $HOME/.local/bin/sync-photos.py >> $HOME/.local/state/kitchen-display/photo-sync.log 2>&1' in body
+    assert 'LEGACY_PHOTO_SYNC="${INSTALL_LEGACY_PHOTO_SYNC:-0}"' in body
     assert ".local/state/kitchen-display" in body
     assert ".local/share/kitchen-display" in body
     assert ".local/venvs" in body
@@ -115,7 +136,8 @@ PHOTO_SYNC_SOURCES = (
 )
 
 
-def _stage_and_run_installer(repo_root, tmp_path, *, missing_module=None, temp_home=None):
+def _stage_and_run_installer(repo_root, tmp_path, *, missing_module=None, temp_home=None,
+                             legacy=False, crontab_in=None):
     staged = tmp_path / "repo"
     if not staged.exists():
         (staged / "provision").mkdir(parents=True)
@@ -159,7 +181,15 @@ def _stage_and_run_installer(repo_root, tmp_path, *, missing_module=None, temp_h
         shim.write_text("#!/bin/sh\nexit 0\n")
         shim.chmod(0o755)
     crontab_shim = shims / "crontab"
-    crontab_shim.write_text('#!/bin/sh\nfor a in "$@"; do [ "$a" = "-l" ] && exit 0; done\ncat >/dev/null\n')
+    cron_file = tmp_path / "crontab.txt"
+    if crontab_in is not None:
+        cron_file.write_text(crontab_in)
+    crontab_shim.write_text(
+        "#!/bin/sh\n"
+        f"CRON_FILE={cron_file}\n"
+        'for a in "$@"; do [ "$a" = "-l" ] && { [ -f "$CRON_FILE" ] && cat "$CRON_FILE"; exit 0; }; done\n'
+        'cat > "$CRON_FILE"\n'
+    )
     crontab_shim.chmod(0o755)
 
     user = getpass.getuser()
@@ -169,6 +199,7 @@ def _stage_and_run_installer(repo_root, tmp_path, *, missing_module=None, temp_h
         KIOSK_USER=user,
         KIOSK_HOME=str(temp_home),
         PATH=f"{shims}:{os.environ['PATH']}",
+        INSTALL_LEGACY_PHOTO_SYNC="1" if legacy else "0",
     )
     proc = subprocess.run(
         ["/bin/bash", str(staged / SCRIPT)],
@@ -183,14 +214,52 @@ def test_photo_sync_modules_referenced_and_targeted_to_bin_dir(repo_root):
         assert src in body, f"{src} missing from {SCRIPT}"
     assert 'SYNC_PHOTOS_DEST="${BIN_DIR}/sync-photos.py"' in body
     assert '"${BIN_DIR}/${mod}"' in body
-    dry = run_dry(repo_root)
+    dry = run_dry(repo_root, env=dict(os.environ, INSTALL_LEGACY_PHOTO_SYNC="1"))
     assert dry.returncode == 0, dry.stderr
     for _src, dest in PHOTO_SYNC_SOURCES:
         assert dest in dry.stdout, f"{dest} missing from --dry-run output"
 
 
-def test_install_ships_all_four_modules_and_they_import_as_a_set(repo_root, tmp_path):
+def test_default_install_skips_the_legacy_photo_tools(repo_root, tmp_path):
     proc, temp_home = _stage_and_run_installer(repo_root, tmp_path)
+    assert proc.returncode == 0, proc.stderr
+
+    bin_dir = temp_home / ".local" / "bin"
+    for _src, dest in PHOTO_SYNC_SOURCES:
+        assert not (bin_dir / dest).exists(), f"default install must not ship {dest}"
+    assert (bin_dir / "photo-switch").is_file()
+    assert (bin_dir / "swayidle-policy").is_file()
+    assert (temp_home / ".local" / "share" / "kitchen-display" / "photo.html").is_file()
+    cron_file = tmp_path / "crontab.txt"
+    assert not cron_file.exists() or "sync-photos.py" not in cron_file.read_text(), \
+        "default install must not write (or leave) a legacy cron entry"
+
+
+def test_default_install_removes_a_leftover_legacy_cron_entry(repo_root, tmp_path):
+    seeded = (
+        "MAILTO=\"\"\n"
+        "*/30 * * * * $HOME/.local/bin/sync-photos.py >> $HOME/.local/state/kitchen-display/photo-sync.log 2>&1\n"
+        "0 4 * * * $HOME/.local/bin/photo_keep.py\n"
+    )
+    proc, _ = _stage_and_run_installer(repo_root, tmp_path, crontab_in=seeded)
+    assert proc.returncode == 0, proc.stderr
+    remaining = (tmp_path / "crontab.txt").read_text()
+    assert "sync-photos.py" not in remaining, remaining
+    assert "photo_keep.py" in remaining, "unrelated cron entries must survive"
+    assert "Removed the legacy sync-photos.py cron entry" in proc.stdout
+
+
+def test_legacy_install_still_ships_the_cron_entry(repo_root, tmp_path):
+    proc, _ = _stage_and_run_installer(repo_root, tmp_path, legacy=True,
+                                       crontab_in="0 4 * * * $HOME/.local/bin/photo_keep.py\n")
+    assert proc.returncode == 0, proc.stderr
+    cron = (tmp_path / "crontab.txt").read_text()
+    assert "*/30 * * * * $HOME/.local/bin/sync-photos.py" in cron
+    assert "photo_keep.py" in cron
+
+
+def test_install_ships_all_four_modules_and_they_import_as_a_set(repo_root, tmp_path):
+    proc, temp_home = _stage_and_run_installer(repo_root, tmp_path, legacy=True)
     assert proc.returncode == 0, proc.stderr
 
     bin_dir = temp_home / ".local" / "bin"
@@ -239,7 +308,8 @@ def test_install_ships_all_four_modules_and_they_import_as_a_set(repo_root, tmp_
 
 @pytest.mark.parametrize("missing_module", [src for src, _ in PHOTO_SYNC_SOURCES])
 def test_missing_photo_sync_module_fails_loudly(repo_root, tmp_path, missing_module):
-    proc, temp_home = _stage_and_run_installer(repo_root, tmp_path, missing_module=missing_module)
+    proc, temp_home = _stage_and_run_installer(repo_root, tmp_path, missing_module=missing_module,
+                                               legacy=True)
     assert proc.returncode != 0
     assert missing_module in (proc.stderr + proc.stdout)
     assert not (temp_home / ".local" / "bin" / "sync-photos.py").exists()

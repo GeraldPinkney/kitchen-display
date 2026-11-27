@@ -19,7 +19,8 @@ panel. Nothing here is a datasheet projection.
   chart survives a Home Assistant outage.
 - **Shows a photo frame after 5 minutes idle** (`swayidle` → `photo-switch show` via Chromium's
   loopback CDP port), advancing every 30 seconds. Touch wakes the screen and drops straight back to
-  the dashboard. Photos are mirrored from Nextcloud to the Pi every 30 minutes by cron.
+  the dashboard. Photos are re-curated and pushed to the Pi by `photo_app` on dockerpi on a
+  nightly systemd timer; the panel only reads the deck.
 - **Blanks the output according to the hour.** `kitchen-idle-policy.service` owns the idle timers:
   the panel goes dark 5 hours after the last touch between 06:00 and 22:00, and 30 minutes after it
   overnight. `swayidle` cannot reload its timeouts, so the policy re-arms it at 06:00 and 22:00. The
@@ -69,8 +70,10 @@ panel. Nothing here is a datasheet projection.
   `tests/fixtures/ha_states.json`, or live HA with `--live`.
 - `tools/push_dashboard.py` — creates/updates the `kitchen` storage dashboard over the HA WebSocket
   API (`--apply`).
-- `tools/photo_select.py`, `photo_format.py`, `photo_cache.py`, `sync_photos.py` — photo pipeline:
-  WebDAV pull, admission rules, 1920-long-side cache, manifest v2.
+- `tools/photo_select.py`, `photo_format.py`, `photo_cache.py`, `sync_photos.py` — the retired
+  legacy photo pipeline (WebDAV pull, admission rules, 1920-long-side cache, manifest v2).
+  Nothing runs them: `photo_app` owns the deck since 2026-11-27, and `install.sh` only ships
+  them when `INSTALL_LEGACY_PHOTO_SYNC=1`.
 - `tools/photo_switch.py` — `show`/`hide` the photo frame over CDP.
 - `kiosk/launch_kiosk.sh` — resolves URL (`$KIOSK_URL_FILE` → `$KIOSK_URL` → default) and
   `KIOSK_SCALE` (default `1.5`), then `exec`s chromium.

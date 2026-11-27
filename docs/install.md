@@ -32,7 +32,7 @@ KIOSK_USER=hermes ./provision/install.sh --dry-run
 sudo KIOSK_USER=hermes KIOSK_HOME=/home/hermes bash provision/install.sh
 ```
 
-This installs the packages, configures `labwc` autologin for `hermes`, seeds `~/.local/share/kitchen-display/solar.html` (if absent), installs and enables three user units — `kitchen-display.service` (scaled via `KIOSK_SCALE=1.5` for a 1280x800 logical viewport), `kitchen-display-http.service` (serving `~/.local/share/kitchen-display/` on `:8788`) and `kitchen-idle-policy.service` (which runs `swayidle` with the time-of-day screen-off timeout) — writes the 02:30 reboot units into `/etc/systemd/system` and enables the timer, then installs `~/.local/bin/sync-photos.py`, `~/.local/bin/swayidle-policy`, the `photoswitch` venv and the every-30-minutes photo cron line. If Home Assistant credentials, `KIOSK_SCALE`, or custom URL overrides are needed, edit `~/.config/kitchen-display/env` (kept at mode `0600`).
+This installs the packages, configures `labwc` autologin for `hermes`, seeds `~/.local/share/kitchen-display/solar.html` (if absent), installs and enables three user units — `kitchen-display.service` (scaled via `KIOSK_SCALE=1.5` for a 1280x800 logical viewport), `kitchen-display-http.service` (serving `~/.local/share/kitchen-display/` on `:8788`) and `kitchen-idle-policy.service` (which runs `swayidle` with the time-of-day screen-off timeout) — writes the 02:30 reboot units into `/etc/systemd/system` and enables the timer, then installs `photo.html`, `photo-switch`, `swayidle-policy` and the `photoswitch` venv. It deliberately does **not** install `sync-photos.py` or a photo cron: since the P3 flip the deck is written by `photo_app` on dockerpi. Re-provisioning a host that still needs the old pipeline takes `INSTALL_LEGACY_PHOTO_SYNC=1`, and the default run removes a leftover `sync-photos.py` cron line if one exists. If Home Assistant credentials, `KIOSK_SCALE`, or custom URL overrides are needed, edit `~/.config/kitchen-display/env` (kept at mode `0600`).
 
 Acceptance for this step is a **second run that changes nothing**:
 
@@ -100,7 +100,9 @@ Run on `kitchen-display` over SSH:
 
 ## 6. Verify the Photo Frame
 
-Run on `kitchen-display` over SSH after configuring Nextcloud credentials (`NEXTCLOUD_PHOTO_URL`, `NEXTCLOUD_PHOTO_USER`, `NEXTCLOUD_PHOTO_APP_PASSWORD`) and running an initial sync:
+Run on `kitchen-display` over SSH. The deck is pushed by `photo_app` on dockerpi, so the
+panel needs no Nextcloud credentials; trigger a publish from dockerpi if the frame is empty
+(`~/photo-app/deploy/run-photo-app.sh`), then check the panel:
 
 1. **User services active**:
    ```bash
